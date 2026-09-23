@@ -1,9 +1,135 @@
 [
   {
+    "name": "adversarial-review",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "code-review",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "codebase-audit",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "curator",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-web-access/dist/index.js"
+  },
+  {
+    "name": "deep-research",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "discover",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/sdd/index.ts"
+  },
+  {
+    "name": "effort",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "google-account",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-web-access/dist/index.js"
+  },
+  {
+    "name": "implement",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/sdd/index.ts"
+  },
+  {
+    "name": "learn-memory-tool",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
     "name": "llama",
     "source": "extension",
     "scope": "temporary",
     "path": "<inline:llama.cpp>"
+  },
+  {
+    "name": "memory-consolidate",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-index-sessions",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-insights",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-interview",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-pin",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-preview-context",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-skills",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-switch-project",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "memory-sync-markdown",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts"
+  },
+  {
+    "name": "multi-perspective",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "plan",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/sdd/index.ts"
   },
   {
     "name": "protected-paths",
@@ -12,15 +138,87 @@
     "path": "<REPO>/agent/extensions/protected-paths/index.ts"
   },
   {
+    "name": "research",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/sdd/index.ts"
+  },
+  {
     "name": "review",
     "source": "prompt",
     "scope": "user",
     "path": "<REPO>/agent/prompts/review.md"
   },
   {
+    "name": "sdd",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/sdd/index.ts"
+  },
+  {
+    "name": "search",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-web-access/dist/index.js"
+  },
+  {
     "name": "skill:commit-message",
     "source": "skill",
     "scope": "user",
     "path": "<REPO>/agent/skills/commit-message/SKILL.md"
+  },
+  {
+    "name": "skill:workflow-authoring",
+    "source": "skill",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/skills/workflow-authoring/SKILL.md"
+  },
+  {
+    "name": "skill:workflow-patterns",
+    "source": "skill",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/skills/workflow-patterns/SKILL.md"
+  },
+  {
+    "name": "spec",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/sdd/index.ts"
+  },
+  {
+    "name": "ultracode",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "websearch",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/pi-web-access/dist/index.js"
+  },
+  {
+    "name": "workflows",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "workflows-models",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "workflows-progress",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
+  },
+  {
+    "name": "workflows-trigger",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
   }
 ]

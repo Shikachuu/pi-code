@@ -4,6 +4,16 @@
       "name": "commit-message",
       "path": "<REPO>/agent/skills/commit-message/SKILL.md",
       "modelInvocable": true
+    },
+    {
+      "name": "workflow-authoring",
+      "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/skills/workflow-authoring/SKILL.md",
+      "modelInvocable": true
+    },
+    {
+      "name": "workflow-patterns",
+      "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/skills/workflow-patterns/SKILL.md",
+      "modelInvocable": true
     }
   ],
   "prompts": [
@@ -15,9 +25,62 @@
   "themes": [],
   "extensions": [
     {
+      "path": "<REPO>/agent/extensions/ask-user/index.ts",
+      "commands": []
+    },
+    {
       "path": "<REPO>/agent/extensions/protected-paths/index.ts",
       "commands": [
         "protected-paths"
+      ]
+    },
+    {
+      "path": "<REPO>/agent/extensions/sdd/index.ts",
+      "commands": [
+        "discover",
+        "implement",
+        "plan",
+        "research",
+        "sdd",
+        "spec"
+      ]
+    },
+    {
+      "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts",
+      "commands": [
+        "learn-memory-tool",
+        "memory-consolidate",
+        "memory-index-sessions",
+        "memory-insights",
+        "memory-interview",
+        "memory-pin",
+        "memory-preview-context",
+        "memory-skills",
+        "memory-switch-project",
+        "memory-sync-markdown"
+      ]
+    },
+    {
+      "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts",
+      "commands": [
+        "adversarial-review",
+        "code-review",
+        "codebase-audit",
+        "deep-research",
+        "effort",
+        "multi-perspective",
+        "ultracode",
+        "workflows",
+        "workflows-models"
+      ]
+    },
+    {
+      "path": "<REPO>/node_modules/pi-web-access/dist/index.js",
+      "commands": [
+        "curator",
+        "google-account",
+        "search",
+        "websearch"
       ]
     }
   ],
