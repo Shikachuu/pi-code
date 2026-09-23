@@ -205,7 +205,8 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
 			planPath: docPath(ctx.cwd, slug, "plan.md"),
 			docs: docs.filter((d) => existsSync(d)),
 		});
-		await handoff(ctx, { kind: "implement", slug }, prompt);
+		const model = ctx.model && { provider: ctx.model.provider, id: ctx.model.id };
+		await handoff(ctx, { kind: "implement", slug, model, thinking: pi.getThinkingLevel() }, prompt);
 	}
 
 	async function gate(ctx: ExtensionCommandContext, slug: string): Promise<void> {

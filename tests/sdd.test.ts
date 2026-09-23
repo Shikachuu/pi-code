@@ -447,10 +447,18 @@ test("/implement marks the feature implementing only once the new session starts
 	const { slug } = createFeature(cwd, "phone", "Phone");
 	writeDoc(cwd, slug, "plan.md", VALID_PLAN);
 	const { pi, commands, handlers, entries, active } = fakePi();
+	const switched: unknown[] = [];
+	pi.getThinkingLevel = () => "medium";
+	pi.setModel = async (m: unknown) => switched.push(m) > 0;
+	pi.setThinkingLevel = (level: string) => switched.push(level);
 	register(pi);
 	const { ctx } = fakeCtx(cwd);
+	const selected = { provider: "p", id: "selected" };
+	ctx.model = selected;
+	ctx.modelRegistry.find = (provider: string, id: string) => (provider === "p" && id === "selected" ? selected : undefined);
 	const sent = withSessions(ctx, handlers);
 	await commands.get("implement").handler(slug, ctx);
+	assert.deepEqual(switched, [selected, "medium"], "the new session keeps the selected model and thinking level");
 	assert.equal(readState(cwd, slug)?.phase, "implementing");
 	assert.match(sent(), /sdd_complete with feature "phone"/);
 	assert.deepEqual(active(), ["read", "sdd_complete"]);
