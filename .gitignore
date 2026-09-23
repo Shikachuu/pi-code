@@ -3,3 +3,4 @@ mise.local.toml
 mise.*.local.toml
 mise.local.lock
 .env
+.DS_Store
