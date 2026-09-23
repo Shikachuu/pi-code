@@ -1,0 +1,26 @@
+[
+  {
+    "name": "llama",
+    "source": "extension",
+    "scope": "temporary",
+    "path": "<inline:llama.cpp>"
+  },
+  {
+    "name": "protected-paths",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/protected-paths/index.ts"
+  },
+  {
+    "name": "review",
+    "source": "prompt",
+    "scope": "user",
+    "path": "<REPO>/agent/prompts/review.md"
+  },
+  {
+    "name": "skill:commit-message",
+    "source": "skill",
+    "scope": "user",
+    "path": "<REPO>/agent/skills/commit-message/SKILL.md"
+  }
+]

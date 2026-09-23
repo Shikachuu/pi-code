@@ -1,0 +1,44 @@
+[tools]
+node = "24"
+pi = "0.87.0"
+
+[env]
+PI_CODING_AGENT_DIR = "{{config_root}}/agent"
+PI_SKIP_VERSION_CHECK = "1"
+PI_TELEMETRY = "0"
+
+[hooks]
+postinstall = "npm ci"
+
+[tasks.setup]
+description = "Install pinned tools and locked npm deps"
+run = "mise install"
+
+[tasks.typecheck]
+description = "Typecheck extensions and tests"
+dir = "{{config_root}}"
+run = "npx tsc --noEmit"
+
+[tasks.test]
+description = "Run config tests"
+dir = "{{config_root}}"
+run = "node --test tests/*.test.ts"
+
+[tasks.snapshot]
+description = "Regenerate test snapshots"
+env = { UPDATE_SNAPSHOTS = "1" }
+run = [{ task = "test" }]
+
+[tasks.drift]
+description = "Fail if pi changed tracked config at runtime"
+dir = "{{config_root}}"
+run = "git status --porcelain -- agent/ | tee /dev/stderr | (! grep -q .)"
+
+[tasks.reset]
+description = "Discard runtime writes pi made to tracked config"
+dir = "{{config_root}}"
+run = "git checkout -- agent/"
+
+[tasks.check]
+description = "Typecheck, test, and check drift"
+run = [{ task = "typecheck" }, { task = "test" }, { task = "drift" }]

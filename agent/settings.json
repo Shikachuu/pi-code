@@ -1,0 +1,9 @@
+{
+  "defaultThinkingLevel": "medium",
+  "defaultProjectTrust": "ask",
+  "enableInstallTelemetry": false,
+  "enableAnalytics": false,
+  "collapseChangelog": true,
+  "lastChangelogVersion": "0.87.0",
+  "packages": []
+}

@@ -1,0 +1,31 @@
+{
+  "skills": [
+    {
+      "name": "commit-message",
+      "path": "<REPO>/agent/skills/commit-message/SKILL.md",
+      "modelInvocable": true
+    }
+  ],
+  "prompts": [
+    {
+      "name": "review",
+      "path": "<REPO>/agent/prompts/review.md"
+    }
+  ],
+  "themes": [],
+  "extensions": [
+    {
+      "path": "<REPO>/agent/extensions/protected-paths/index.ts",
+      "commands": [
+        "protected-paths"
+      ]
+    }
+  ],
+  "contextFiles": [
+    "<REPO>/agent/AGENTS.md"
+  ],
+  "systemPromptSource": null,
+  "appendSystemPromptSources": [
+    "<REPO>/agent/APPEND_SYSTEM.md"
+  ]
+}

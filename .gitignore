@@ -1,0 +1,5 @@
+node_modules/
+mise.local.toml
+mise.*.local.toml
+mise.local.lock
+.env
