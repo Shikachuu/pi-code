@@ -46,6 +46,12 @@
       ]
     },
     {
+      "path": "<REPO>/agent/extensions/verification/index.ts",
+      "commands": [
+        "verify"
+      ]
+    },
+    {
       "path": "<REPO>/node_modules/pi-hermes-memory/src/index.ts",
       "commands": [
         "learn-memory-tool",

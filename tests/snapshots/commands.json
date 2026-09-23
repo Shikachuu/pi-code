@@ -192,6 +192,12 @@
     "path": "<REPO>/node_modules/@quintinshaw/pi-dynamic-workflows/extensions/workflow.ts"
   },
   {
+    "name": "verify",
+    "source": "extension",
+    "scope": "user",
+    "path": "<REPO>/agent/extensions/verification/index.ts"
+  },
+  {
     "name": "websearch",
     "source": "extension",
     "scope": "user",

@@ -13,5 +13,7 @@
 !prompts/**
 !extensions/
 !extensions/**
+!agents/
+!agents/**
 !themes/
 !themes/**
