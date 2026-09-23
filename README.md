@@ -53,7 +53,7 @@ Pi writes to `agent/settings.json` when you save a model with Ctrl+S in `/model`
 
 ## Upgrading pi
 
-1. Bump `pi` in `mise.toml`, `@earendil-works/pi-coding-agent` in `package.json`, and `lastChangelogVersion` in `agent/settings.json` to the same version.
+1. Bump `pi` in `mise.toml`, `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui` in `package.json`, and `lastChangelogVersion` in `agent/settings.json` to the same version.
 2. Run `npm install`, `mise install` and `mise lock --platform macos-arm64,linux-x64`.
 3. Run `mise run check`. Read the snapshot diffs against the "Breaking Changes" sections of `node_modules/@earendil-works/pi-coding-agent/CHANGELOG.md`.
 4. Run `mise run snapshot` and commit.

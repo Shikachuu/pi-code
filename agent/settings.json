@@ -5,5 +5,15 @@
   "enableAnalytics": false,
   "collapseChangelog": true,
   "lastChangelogVersion": "0.87.0",
-  "packages": []
+  "packages": [
+    "../node_modules/pi-hermes-memory",
+    "../node_modules/@quintinshaw/pi-dynamic-workflows",
+    "../node_modules/pi-web-access"
+  ],
+  "theme": "dark",
+  "defaultProvider": "openrouter",
+  "defaultModel": "moonshotai/kimi-k2.6",
+  "terminal": {
+    "showTerminalProgress": true
+  }
 }

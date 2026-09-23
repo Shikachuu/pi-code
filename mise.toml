@@ -8,7 +8,7 @@ PI_SKIP_VERSION_CHECK = "1"
 PI_TELEMETRY = "0"
 
 [hooks]
-postinstall = "npm ci"
+postinstall = "npm ci && npm rebuild better-sqlite3 --ignore-scripts=false"
 
 [tasks.setup]
 description = "Install pinned tools and locked npm deps"

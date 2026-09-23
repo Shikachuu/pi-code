@@ -7,7 +7,13 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.87.0",
+    "@earendil-works/pi-tui": "0.87.0",
     "@types/node": "24.13.6",
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@quintinshaw/pi-dynamic-workflows": "3.13.0",
+    "pi-hermes-memory": "0.9.9",
+    "pi-web-access": "0.31.0"
   }
 }
