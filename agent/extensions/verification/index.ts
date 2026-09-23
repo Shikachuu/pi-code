@@ -1,14 +1,39 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 import { loadAgentRegistry } from "@quintinshaw/pi-dynamic-workflows";
-import { showDocument } from "../ask-user/review.ts";
 import { runSdd, type WorkflowRunner } from "../sdd/runner.ts";
 import type { Reports } from "./report.ts";
-import { renderSummary } from "./report.ts";
+import { mergeFindings, renderSummary, verdict as computeVerdict } from "./report.ts";
 import { formatScope, isLarge, resolveScope, type Scope } from "./scope.ts";
 import { VERIFY_AGENTS, VERIFY_SCRIPT, verifyArgs } from "./workflow.ts";
 
 export interface VerificationOptions {
 	run?: WorkflowRunner;
+}
+
+// The ask-user DOC_ENTRY renderer collapses to a one-line header until the user
+// expands it via the transcript's own UI toggle, which left /verify's report
+// invisible unless the main agent happened to relay the sendMessage content back
+// as prose. /verify's report *is* the payload the user asked for, so it gets its
+// own entry type that always renders the full markdown.
+export const VERIFY_DOC_ENTRY = "verify-doc";
+
+export interface VerifyDocEntry {
+	title: string;
+	markdown: string;
+	status: string;
+}
+
+function registerVerifyDocRenderer(pi: ExtensionAPI) {
+	pi.registerEntryRenderer<VerifyDocEntry>(VERIFY_DOC_ENTRY, (entry, _options, theme) => {
+		const data = entry.data;
+		if (!data) return undefined;
+		const header = new Text(`${theme.fg("accent", theme.bold(data.title))} ${theme.fg("dim", `(${data.status})`)}`, 0, 0);
+		const box = new Container();
+		box.addChild(header);
+		box.addChild(new Markdown(data.markdown, 1, 0, getMarkdownTheme()));
+		return box;
+	});
 }
 
 function checkAgentRegistry(cwd: string): string | null {
@@ -25,6 +50,7 @@ function checkAgentRegistry(cwd: string): string | null {
 }
 
 export default function (pi: ExtensionAPI, options: VerificationOptions = {}) {
+	registerVerifyDocRenderer(pi);
 	pi.registerCommand("verify", {
 		description: "Run three parallel read-only verification agents over a git scope and render a Verification Summary",
 		handler: async (args, ctx: ExtensionContext) => {
@@ -65,9 +91,9 @@ async function handleVerify(pi: ExtensionAPI, ctx: ExtensionContext, args: strin
 	});
 
 	const markdown = renderSummary(scope, reports);
-	const verdictLine = markdown.match(/\*\*Verdict:\*\* (.+)/)?.[1] ?? "REQUEST CHANGES";
+	const verdictLine = computeVerdict(reports, mergeFindings(reports));
 
-	showDocument(pi, { title: `Verify: ${target || "(default)"}`, markdown }, verdictLine);
+	pi.appendEntry<VerifyDocEntry>(VERIFY_DOC_ENTRY, { title: `Verify: ${target || "(default)"}`, markdown, status: verdictLine });
 	pi.sendMessage({ customType: "verify-report", content: markdown, display: false });
 }
 

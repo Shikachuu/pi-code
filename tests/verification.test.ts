@@ -315,12 +315,14 @@ function fakePi() {
 	const commands = new Map<string, any>();
 	const entries: { type: string; data: any }[] = [];
 	const messages: any[] = [];
+	const renderers = new Map<string, any>();
 	const pi = {
 		registerCommand: (name: string, cmd: any) => commands.set(name, cmd),
+		registerEntryRenderer: (type: string, renderer: any) => renderers.set(type, renderer),
 		appendEntry: (type: string, data: any) => entries.push({ type, data }),
 		sendMessage: (message: any) => messages.push(message),
 	};
-	return { pi: pi as any, commands, entries, messages };
+	return { pi: pi as any, commands, entries, messages, renderers };
 }
 
 function fakeCtx(cwd: string) {
@@ -408,6 +410,29 @@ test("/verify renders a doc entry with the exact verdict and sends a non-display
 	assert.equal(messages.length, 1);
 	assert.equal(messages[0].display, false);
 	assert.equal(messages[0].customType, "verify-report");
+});
+
+test("/verify's entry renderer always shows the full markdown, not gated on the collapsed/expanded toggle", async () => {
+	const { pi, commands, entries, renderers } = fakePi();
+	register(pi, { run: (async () => ({ result: reports() })) as any });
+	const scopeCwd = initRepo();
+	commitFile(scopeCwd, "a.ts", "a\n", "add a");
+	writeFileSync(join(scopeCwd, "a.ts"), "a\nchanged\n");
+	writeAgentDefs(scopeCwd);
+	await withAgentDir(scopeCwd, async () => {
+		const { ctx } = fakeCtx(scopeCwd);
+		await commands.get("verify").handler("", ctx);
+	});
+	const renderer = renderers.get("verify-doc");
+	assert.ok(renderer, "a renderer must be registered for the verify doc entry");
+	const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+	const collapsed = renderer({ data: entries[0].data }, { expanded: false }, theme);
+	const expanded = renderer({ data: entries[0].data }, { expanded: true }, theme);
+	assert.ok(collapsed, "collapsed render must still return a component");
+	assert.ok(expanded, "expanded render must return a component");
+	const childCount = (c: any) => c.children?.length;
+	assert.equal(childCount(collapsed), childCount(expanded), "the report body must not depend on the expanded flag");
+	assert.ok(childCount(collapsed) >= 2, "the collapsed render must already include the markdown body, not just a header");
 });
 
 test("/verify uses REQUEST CHANGES as the doc status when a report is missing", async () => {
