@@ -32,7 +32,7 @@ run = [{ task = "test" }]
 [tasks.drift]
 description = "Fail if pi changed tracked config at runtime"
 dir = "{{config_root}}"
-run = "git status --porcelain -- agent/ | tee /dev/stderr | (! grep -q .)"
+run = 'out=$(git status --porcelain -- agent/); [ -z "$out" ] || { echo "$out" >&2; exit 1; }'
 
 [tasks.reset]
 description = "Discard runtime writes pi made to tracked config"
