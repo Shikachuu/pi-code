@@ -121,7 +121,7 @@ ${input.discovery ?? "No discovery was run."}
 ${research ? `\n${research}\n` : ""}${input.memory ? `\n${input.memory}\n` : ""}
 Work in this order:
 1. Read the code the spec and discovery point at until you understand the change. Do not edit any file.
-2. List the information gaps and technical decisions you cannot infer from these inputs or the repo. Resolve each one with the ask_user tool: batch up to 4 questions per call, 2-4 options each, recommended option first. Repeat until nothing is open.
+2. List the information gaps and technical decisions you cannot infer from these inputs or the repo. Resolve each one with the ask_user tool: batch up to 4 questions per call, 2-4 options each, recommended option first, and multiSelect true when several options can apply together. Repeat until nothing is open.
 3. Find the validation pipeline: mise tasks, package scripts, Makefile targets, CI workflows, test runners. If none exists or it is ambiguous, propose options with ask_user.
 4. Write the plan in this format. Every acceptance criterion must be checkable by the validation pipeline or a stated manual step.
 

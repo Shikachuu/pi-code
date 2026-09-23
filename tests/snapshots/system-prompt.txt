@@ -36,6 +36,7 @@ In addition to the tools above, you may have access to other custom tools depend
 - Use write only for new files or complete rewrites.
 - Use ask_user only for decisions that belong to the user and that you cannot resolve from the request, the code, or sensible defaults.
 - Batch related questions into one ask_user call. If you recommend an option, list it first and add '(Recommended)' to its label.
+- Set multiSelect true whenever the user may want more than one option, such as which platforms, fields or features to include; set it false only for mutually exclusive choices.
 - Use this tool proactively when the user corrects you, shares a preference, or reveals durable environment or project facts.
 - Do not use memory tools for temporary task state, TODO items, or session progress.
 - Use the skill_manage tool after completing complex tasks that required trial and error or multiple tool calls.

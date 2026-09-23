@@ -96,8 +96,9 @@ const QUESTION_SCHEMA = obj({
 				header: str,
 				question: str,
 				options: { type: "array", minItems: 2, maxItems: 4, items: obj({ label: str, description: str }, ["label"]) },
+				multiSelect: { type: "boolean" },
 			},
-			["id", "header", "question", "options"],
+			["id", "header", "question", "options", "multiSelect"],
 		),
 	},
 });
@@ -117,7 +118,13 @@ export interface EnrichResult {
 	scope?: { goal: string; inScope: string[]; nonGoals: string[]; assumptions: string[] };
 	repo?: { stack: string; areas: { path: string; why: string }[]; patterns: string[] };
 	questions?: {
-		questions: { id: string; header: string; question: string; options: { label: string; description?: string }[] }[];
+		questions: {
+			id: string;
+			header: string;
+			question: string;
+			options: { label: string; description?: string }[];
+			multiSelect?: boolean;
+		}[];
 	};
 }
 
@@ -137,7 +144,7 @@ export function enrichArgs(request: string, memory: string) {
 		},
 		questions: {
 			prompt: withMemory(
-				`${req}\n\nList up to 4 product-level questions whose answers change what gets built, and that the request does not answer. Skip anything a developer can decide later. Each question needs a short header (at most 12 characters) and 2-4 distinct options, recommended option first. Return an empty list when the request is clear.`,
+				`${req}\n\nList up to 4 product-level questions whose answers change what gets built, and that the request does not answer. Skip anything a developer can decide later. Each question needs a short header (at most 12 characters) and 2-4 distinct options, recommended option first. Set multiSelect true when more than one option can apply. Return an empty list when the request is clear.`,
 				memory,
 			),
 			schema: QUESTION_SCHEMA,

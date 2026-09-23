@@ -11,10 +11,12 @@ const OptionSchema = Type.Object({
 
 const QuestionSchema = Type.Object({
 	id: Type.Optional(Type.String({ description: "Stable key for the answer; defaults to q1, q2, ..." })),
-	header: Type.String({ description: "Tab label, at most 12 characters, e.g. 'Auth', 'Storage'" }),
+	header: Type.String({ description: "Tab label, 12 characters or fewer, e.g. 'Auth', 'Storage'; longer labels are cut" }),
 	question: Type.String({ description: "The full question, ending with a question mark" }),
 	options: Type.Array(OptionSchema, { minItems: 2, maxItems: 4, description: "2-4 distinct choices. Do not add an 'Other' option; the picker adds a free-form row" }),
-	multiSelect: Type.Optional(Type.Boolean({ description: "Allow picking several options" })),
+	multiSelect: Type.Boolean({
+		description: "true when several options can apply at once (e.g. which platforms, which fields to include); false when the options are mutually exclusive",
+	}),
 });
 
 const Params = Type.Object({
@@ -36,6 +38,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use ask_user only for decisions that belong to the user and that you cannot resolve from the request, the code, or sensible defaults.",
 			"Batch related questions into one ask_user call. If you recommend an option, list it first and add '(Recommended)' to its label.",
+			"Set multiSelect true whenever the user may want more than one option, such as which platforms, fields or features to include; set it false only for mutually exclusive choices.",
 		],
 		parameters: Params,
 

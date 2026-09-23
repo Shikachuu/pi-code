@@ -62,7 +62,13 @@ export function toQuestions(raw: EnrichResult["questions"]): Question[] {
 	return (raw?.questions ?? [])
 		.filter((q) => q?.question && Array.isArray(q.options) && q.options.length >= 2)
 		.slice(0, 4)
-		.map((q, i) => ({ id: `q${i + 1}`, header: (q.header || `Q${i + 1}`).slice(0, 12), question: q.question, options: q.options.slice(0, 4) }));
+		.map((q, i) => ({
+			id: `q${i + 1}`,
+			header: q.header || `Q${i + 1}`,
+			question: q.question,
+			options: q.options.slice(0, 4),
+			multiSelect: q.multiSelect === true,
+		}));
 }
 
 function requireFeature(ctx: ExtensionContext, name: string): FeatureState {

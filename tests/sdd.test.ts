@@ -419,16 +419,18 @@ test("toQuestions assigns ids that cannot collide", async () => {
 		questions: [
 			{ id: "q2", header: "A very long header", question: "A?", options: opts },
 			{ id: "x", header: "B", question: "B?", options: [{ label: "only" }] },
-			{ id: "q2", header: "C", question: "C?", options: opts },
+			{ id: "q2", header: "C", question: "C?", options: opts, multiSelect: true },
 		],
 	});
 	assert.deepEqual(
-		qs.map((q) => [q.id, q.header]),
+		qs.map((q) => [q.id, q.header, q.multiSelect]),
 		[
-			["q1", "A very long "],
-			["q2", "C"],
+			["q1", "A very long header", false],
+			["q2", "C", true],
 		],
 	);
+	const schema: any = enrichArgs("r", "").questions.schema;
+	assert.ok(schema.properties.questions.items.required.includes("multiSelect"));
 });
 
 function withSessions(ctx: any, handlers: Map<string, any>) {

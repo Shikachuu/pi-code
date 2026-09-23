@@ -6,6 +6,7 @@ import {
 	Key,
 	matchesKey,
 	type TUI,
+	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
@@ -52,6 +53,28 @@ export interface State {
 }
 
 export const DEFAULT_OTHER_LABEL = "Type something.";
+export const MAX_HEADER = 12;
+const DONE = "Done";
+
+export function tabLabel(header: string): string {
+	return truncateToWidth(header, MAX_HEADER, "…");
+}
+
+export function layoutTabs(tabs: string[], width: number, indent = " "): string[] {
+	const room = Math.max(1, width - visibleWidth(indent));
+	const lines: string[] = [];
+	let line = "";
+	for (const raw of tabs) {
+		const tab = visibleWidth(raw) > room ? truncateToWidth(raw, room, "…") : raw;
+		const next = line ? `${line} ${tab}` : tab;
+		if (line && visibleWidth(next) > room) {
+			lines.push(indent + line);
+			line = tab;
+		} else line = next;
+	}
+	if (line) lines.push(indent + line);
+	return lines;
+}
 
 export function initialState(questions: Question[]): State {
 	return { questions, tab: 0, cursor: 0, answers: {}, editing: false };
@@ -173,6 +196,11 @@ export function validateQuestions(questions: Question[]): string | undefined {
 		if (ids.has(q.id)) return `Duplicate question id "${q.id}"`;
 		ids.add(q.id);
 		if (q.options.length < 2) return `Question "${q.header}" needs at least 2 options`;
+		const labels = q.options.map((o) => o.label);
+		const reserved = [q.otherLabel ?? DEFAULT_OTHER_LABEL, DONE];
+		if (new Set(labels).size !== labels.length) return `Question "${q.header}" has duplicate option labels`;
+		const clash = labels.find((l) => reserved.includes(l));
+		if (clash) return `Question "${q.header}" uses the reserved option label "${clash}"`;
 	}
 	return undefined;
 }
@@ -230,7 +258,7 @@ export function createInterview(
 		if (hasSubmitTab(questions)) {
 			const tabs = questions.map((q, i) => {
 				const done = isAnswered(state.answers[q.id]);
-				const text = ` ${done ? "■" : "□"} ${q.header} `;
+				const text = ` ${done ? "■" : "□"} ${tabLabel(q.header)} `;
 				return i === state.tab ? theme.bg("selectedBg", theme.fg("text", text)) : theme.fg(done ? "success" : "muted", text);
 			});
 			const submit = " Submit ";
@@ -239,8 +267,7 @@ export function createInterview(
 					? theme.bg("selectedBg", theme.fg("text", submit))
 					: theme.fg(allAnswered(state) ? "success" : "dim", submit),
 			);
-			add(" ", tabs.join(" "));
-			lines.push("");
+			lines.push(...layoutTabs(tabs, w), "");
 		}
 
 		const q = questions[state.tab];
@@ -312,15 +339,25 @@ async function fallbackInterview(ctx: ExtensionContext, questions: Question[]): 
 	const answers: Answers = {};
 	for (const q of questions) {
 		const other = q.otherLabel ?? DEFAULT_OTHER_LABEL;
-		const choice = await ctx.ui.select(q.question, [...q.options.map((o) => o.label), other]);
-		if (choice === undefined) return undefined;
-		if (choice !== other) {
-			answers[q.id] = { selected: [choice] };
-			continue;
+		const selected: string[] = [];
+		for (;;) {
+			const remaining = q.options.map((o) => o.label).filter((l) => !selected.includes(l));
+			const choices = [...remaining, other, ...(q.multiSelect && selected.length ? [DONE] : [])];
+			const title = q.multiSelect && selected.length ? `${q.question} (picked: ${selected.join(", ")})` : q.question;
+			const choice = await ctx.ui.select(title, choices);
+			if (choice === undefined) return undefined;
+			if (choice === other) {
+				const text = await ctx.ui.input(q.question);
+				if (text === undefined) return undefined;
+				answers[q.id] = { selected: q.multiSelect ? selected : [], freeform: text.trim() || undefined };
+				break;
+			}
+			if (choice !== DONE) selected.push(choice);
+			if (!q.multiSelect || choice === DONE || remaining.length === 1) {
+				answers[q.id] = { selected };
+				break;
+			}
 		}
-		const text = await ctx.ui.input(q.question);
-		if (text === undefined) return undefined;
-		answers[q.id] = { selected: [], freeform: text.trim() || undefined };
 	}
 	return answers;
 }

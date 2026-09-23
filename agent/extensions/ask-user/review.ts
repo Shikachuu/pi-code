@@ -1,5 +1,5 @@
 import { type ExtensionAPI, type ExtensionContext, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Key, Markdown, matchesKey } from "@earendil-works/pi-tui";
+import { Key, Markdown, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { type Answers, createInterview, interview, type Question } from "./interview.ts";
 
 export const DOC_ENTRY = "ask-doc";
@@ -56,13 +56,14 @@ export async function reviewDocument(pi: ExtensionAPI, ctx: ExtensionContext, do
 				render(width: number) {
 					const body = markdown.render(width);
 					const pickerLines = picker.render(width);
-					const height = Math.max(5, tui.terminal.rows - pickerLines.length - 6);
+					const title = wrapTextWithAnsi(theme.fg("accent", theme.bold(doc.title)), Math.max(1, width - 1)).map((l) => ` ${l}`);
+					const height = Math.max(5, tui.terminal.rows - pickerLines.length - title.length - 5);
 					scroll = Math.min(scroll, Math.max(0, body.length - height));
 					const end = Math.min(body.length, scroll + height);
 					const rule = theme.fg("accent", "─".repeat(Math.max(1, width)));
 					const position =
-						body.length > height ? theme.fg("dim", ` lines ${scroll + 1}-${end} of ${body.length} - PgUp/PgDn scroll`) : "";
-					return [rule, ` ${theme.fg("accent", theme.bold(doc.title))}`, "", ...body.slice(scroll, end), position, rule, ...pickerLines];
+						body.length > height ? truncateToWidth(theme.fg("dim", ` lines ${scroll + 1}-${end} of ${body.length} - PgUp/PgDn scroll`), width) : "";
+					return [rule, ...title, "", ...body.slice(scroll, end), position, rule, ...pickerLines];
 				},
 				invalidate() {
 					markdown.invalidate();

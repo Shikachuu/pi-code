@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
+import { stripVTControlCharacters as stripAnsi } from "node:util";
 import { test } from "node:test";
+import { initTheme } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import register from "../agent/extensions/ask-user/index.ts";
 import {
 	type Action,
 	createInterview,
 	formatAnswers,
 	initialState,
+	layoutTabs,
 	type Question,
 	reduce,
 	type State,
 	validateQuestions,
 } from "../agent/extensions/ask-user/interview.ts";
-import { reviewQuestion, toReviewResult } from "../agent/extensions/ask-user/review.ts";
+import { reviewDocument, reviewQuestion, toReviewResult } from "../agent/extensions/ask-user/review.ts";
 
 const pick = (id: string, header: string, multiSelect = false): Question => ({
 	id,
@@ -105,6 +109,9 @@ test("validateQuestions rejects empty lists, duplicate ids and single options", 
 	assert.match(validateQuestions([pick("a", "A"), pick("a", "B")]) ?? "", /Duplicate/);
 	assert.match(validateQuestions([{ ...pick("a", "A"), options: [{ label: "x" }] }]) ?? "", /at least 2/);
 	assert.equal(validateQuestions([pick("a", "A")]), undefined);
+	assert.match(validateQuestions([{ ...pick("a", "A"), options: [{ label: "x" }, { label: "x" }] }]) ?? "", /duplicate option labels/);
+	assert.match(validateQuestions([{ ...pick("a", "A"), options: [{ label: "x" }, { label: "Done" }] }]) ?? "", /reserved option label "Done"/);
+	assert.match(validateQuestions([{ ...pick("a", "A"), options: [{ label: "x" }, { label: "Type something." }] }]) ?? "", /reserved/);
 });
 
 test("formatAnswers lists choices and free text by header", () => {
@@ -197,4 +204,90 @@ test("ask_user makes explicit and default ids unique", async () => {
 	const result = await execute({ questions: [{ id: "q2", header: "X", question: "X?", options }, { header: "Y", question: "Y?", options }] }, ctx);
 	assert.deepEqual(result.details.questions.map((q: any) => q.id), ["q2", "q2-2"]);
 	assert.equal(result.content[0].text, "X: A\nY: A");
+});
+
+test("long headers are cut to 12 characters and tabs never split across lines", async () => {
+	const qs = [1, 2, 3, 4].map((i) => ({ ...pick(`q${i}`, `Storage layer choice ${i}`), question: "Which persistence layer should store the phone number?" }));
+	const ui = createInterview(fakeTui(), plainTheme, qs, () => {});
+	const lines = ui.render(40);
+	assert.ok(lines.every((l) => visibleWidth(l) <= 40), lines.join("\n"));
+	const tabLines = lines.slice(0, lines.indexOf("")).map(stripAnsi);
+	const labels = tabLines.join(" ").match(/□ [^□]+?(?= {2}|$| Submit)/g) ?? [];
+	assert.equal(labels.length, 4, tabLines.join("\n"));
+	for (const label of labels) assert.equal(label.trim(), "□ Storage lay…");
+});
+
+test("layoutTabs wraps whole tabs and cuts a tab wider than the line", () => {
+	assert.deepEqual(layoutTabs(["aaaa", "bbbb", "cccc"], 11), [" aaaa bbbb", " cccc"]);
+	assert.deepEqual(layoutTabs(["x".repeat(20)], 8).map(stripAnsi), [` ${"x".repeat(6)}…`]);
+});
+
+test("review overlay wraps a long title to the screen width", async () => {
+	let component: any;
+	const ctx: any = {
+		mode: "tui",
+		ui: {
+			custom: (factory: any) =>
+				new Promise((resolve) => {
+					component = factory(fakeTui(), plainTheme, undefined, resolve);
+					component.handleInput("\r");
+				}),
+		},
+	};
+	initTheme("dark");
+	const pi: any = { appendEntry: () => {} };
+	const title = `Spec: ${"very long feature title ".repeat(4)}`;
+	const result = await reviewDocument(pi, ctx, { title, markdown: `# Doc\n\n${"word ".repeat(60)}` });
+	assert.deepEqual(result, { action: "accept" });
+	const lines: string[] = component.render(40);
+	assert.ok(lines.every((l) => visibleWidth(l) <= 40), lines.join("\n"));
+	assert.ok(lines.slice(1, 4).join(" ").includes("very long feature title very"));
+});
+
+test("ask_user requires multiSelect and the fallback collects several picks", async () => {
+	let tool: any;
+	register({ registerTool: (t: any) => (tool = t), registerEntryRenderer: () => {} } as any);
+	assert.ok(tool.parameters.properties.questions.items.required.includes("multiSelect"));
+	assert.ok(tool.promptGuidelines.some((g: string) => g.includes("multiSelect true")));
+	const picks = ["A", "B", "Done"];
+	const ctx = { mode: "rpc", hasUI: true, ui: { select: async () => picks.shift(), input: async () => undefined } };
+	const options = [{ label: "A" }, { label: "B" }, { label: "C" }];
+	const result = await tool.execute("id", { questions: [{ header: "X", question: "X?", options, multiSelect: true }] }, undefined, undefined, ctx);
+	assert.equal(result.content[0].text, "X: A; B");
+	const done = ["C", "Done"];
+	const ctx2 = { ...ctx, ui: { ...ctx.ui, select: async () => done.shift() } };
+	const one = await tool.execute("id", { questions: [{ header: "X", question: "X?", options, multiSelect: true }] }, undefined, undefined, ctx2);
+	assert.equal(one.content[0].text, "X: C");
+});
+
+test("fallback multi-select: free text keeps picks, exhausting options ends, cancel dismisses, single-select never offers Done", async () => {
+	let tool: any;
+	register({ registerTool: (t: any) => (tool = t), registerEntryRenderer: () => {} } as any);
+	const options = [{ label: "A" }, { label: "B" }, { label: "C" }];
+	const ask = async (multiSelect: boolean, picks: (string | undefined)[], typed?: string) => {
+		const seen: { title: string; choices: string[] }[] = [];
+		const ctx = {
+			mode: "rpc",
+			hasUI: true,
+			ui: {
+				select: async (title: string, choices: string[]) => {
+					seen.push({ title, choices });
+					return picks.shift();
+				},
+				input: async () => typed,
+			},
+		};
+		const result = await tool.execute("id", { questions: [{ header: "X", question: "X?", options, multiSelect }] }, undefined, undefined, ctx);
+		return { text: result.content[0].text, seen };
+	};
+	const freeform = await ask(true, ["A", "Type something."], "custom");
+	assert.equal(freeform.text, "X: A; user wrote: custom");
+	assert.deepEqual(freeform.seen[0].choices, ["A", "B", "C", "Type something."], "Done appears only after a pick");
+	assert.deepEqual(freeform.seen[1], { title: "X? (picked: A)", choices: ["B", "C", "Type something.", "Done"] });
+	assert.equal((await ask(true, ["A", "B", "C"])).text, "X: A; B; C");
+	assert.match((await ask(true, ["A", undefined])).text, /dismissed/);
+	const single = await ask(false, ["B"]);
+	assert.equal(single.text, "X: B");
+	assert.equal(single.seen.length, 1);
+	assert.ok(!single.seen[0].choices.includes("Done"));
 });
