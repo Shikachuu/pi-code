@@ -12,6 +12,7 @@
 - Use the active voice and name who does the action.
 - Put one idea in each sentence. Cut filler, hedging and adverbs.
 - Don't use colons as a mid-sentence connector. Use sentence case for headings. Use bold sparingly.
+- These bullets are a summary. For a full editing pass on a document, load the unslop skill. It has the complete ruleset with stable rule ids.
 
 ## Autonomy
 

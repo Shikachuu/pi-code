@@ -1,8 +1,23 @@
 {
   "skills": [
     {
+      "name": "actions",
+      "path": "<REPO>/agent/skills/actions/SKILL.md",
+      "modelInvocable": true
+    },
+    {
       "name": "commit-message",
       "path": "<REPO>/agent/skills/commit-message/SKILL.md",
+      "modelInvocable": true
+    },
+    {
+      "name": "tofu-dev",
+      "path": "<REPO>/agent/skills/tofu-dev/SKILL.md",
+      "modelInvocable": true
+    },
+    {
+      "name": "unslop",
+      "path": "<REPO>/agent/skills/unslop/SKILL.md",
       "modelInvocable": true
     },
     {

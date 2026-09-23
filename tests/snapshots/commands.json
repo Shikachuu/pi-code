@@ -162,10 +162,28 @@
     "path": "<REPO>/node_modules/pi-web-access/dist/index.js"
   },
   {
+    "name": "skill:actions",
+    "source": "skill",
+    "scope": "user",
+    "path": "<REPO>/agent/skills/actions/SKILL.md"
+  },
+  {
     "name": "skill:commit-message",
     "source": "skill",
     "scope": "user",
     "path": "<REPO>/agent/skills/commit-message/SKILL.md"
+  },
+  {
+    "name": "skill:tofu-dev",
+    "source": "skill",
+    "scope": "user",
+    "path": "<REPO>/agent/skills/tofu-dev/SKILL.md"
+  },
+  {
+    "name": "skill:unslop",
+    "source": "skill",
+    "scope": "user",
+    "path": "<REPO>/agent/skills/unslop/SKILL.md"
   },
   {
     "name": "skill:workflow-authoring",

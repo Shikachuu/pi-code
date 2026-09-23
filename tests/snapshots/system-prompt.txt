@@ -93,6 +93,7 @@ Project-specific instructions and guidelines:
 - Use the active voice and name who does the action.
 - Put one idea in each sentence. Cut filler, hedging and adverbs.
 - Don't use colons as a mid-sentence connector. Use sentence case for headings. Use bold sparingly.
+- These bullets are a summary. For a full editing pass on a document, load the unslop skill. It has the complete ruleset with stable rule ids.
 
 ## Autonomy
 
@@ -133,9 +134,24 @@ When a skill file references a relative path, resolve it against the skill direc
 
 <available_skills>
   <skill>
+    <name>actions</name>
+    <description>Use when creating, editing, reviewing, debugging, or splitting GitHub Actions CI/CD workflows and composite actions under .github/ (workflow YAML, jobs, matrix builds, runners). Activate when the user says &quot;set up CI for this repo&quot;, &quot;add a CI/CD or deploy workflow&quot;, &quot;pin actions to commit SHAs&quot;, &quot;this workflow is too big, split it up&quot;, &quot;extract a reusable or composite action&quot;, &quot;the pipeline / release-please is broken&quot;, &quot;cache dependencies in CI&quot;, &quot;add concurrency cancellation to PR checks&quot;, &quot;only run jobs when certain paths change&quot;, &quot;bump an action to the latest version&quot;, or &quot;give a workflow a dynamic run name&quot;.</description>
+    <location><REPO>/agent/skills/actions/SKILL.md</location>
+  </skill>
+  <skill>
     <name>commit-message</name>
     <description>Write a git commit message for staged changes. Use when the user asks to commit, write a commit message, or summarize staged changes for git.</description>
     <location><REPO>/agent/skills/commit-message/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>tofu-dev</name>
+    <description>Use when writing, reviewing, refactoring, or debugging OpenTofu (tofu) infrastructure for AWS - modules, environments, state/backends, providers, IAM, mock tests, or the validate gate. Enforces one opinionated AWS+OpenTofu ruleset so every project looks the same. Activate when the user says &quot;write a tofu module&quot;, &quot;add an AWS resource in tofu&quot;, &quot;set up opentofu for AWS&quot;, &quot;structure my tofu project&quot;, &quot;add remote state&quot;, &quot;write a tofu mock test&quot;, &quot;validate my tofu&quot;, &quot;add a terraform-aws-modules module&quot;, &quot;migrate this to opentofu&quot;, or edits files under tofu/ (*.tf, *.tofu, *.hcl, *.tofutest.hcl, *.tfvars). Do not use for CloudFormation, CDK, Pulumi, raw AWS CLI/console work, or Kubernetes manifests.</description>
+    <location><REPO>/agent/skills/tofu-dev/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>unslop</name>
+    <description>Use when editing, reviewing, or rewriting existing prose so it stops reading as AI-generated - docs, READMEs, PR and commit bodies, release notes, changelogs, blog posts, drafts. Activate when the user says &quot;unslop this&quot;, &quot;de-slop this&quot;, &quot;remove the AI tells&quot;, &quot;this reads like ChatGPT&quot;, &quot;this sounds like an LLM wrote it&quot;, &quot;make this sound human&quot;, &quot;why does this sound so generated&quot;, &quot;clean up the writing&quot;, &quot;do a style pass&quot;, &quot;tighten this doc&quot;, &quot;review the prose&quot;, or &quot;cut the em dashes&quot;. Do not use for code refactoring, translation, or writing new content from scratch.</description>
+    <location><REPO>/agent/skills/unslop/SKILL.md</location>
   </skill>
   <skill>
     <name>workflow-authoring</name>
