@@ -8,7 +8,7 @@ export const SINGLE_SCRIPT = `export const meta = {
   phases: [{ title: 'Run' }],
 }
 phase('Run')
-return await agent(args.prompt, { label: args.label, tier: args.tier, schema: args.schema })`;
+return await agent(args.prompt, { label: args.label, tier: args.tier, agentType: 'sdd-scout', schema: args.schema })`;
 
 export const ENRICH_SCRIPT = `export const meta = {
   name: 'sdd_spec_enrich',
@@ -17,9 +17,9 @@ export const ENRICH_SCRIPT = `export const meta = {
 }
 phase('Enrich')
 const results = await parallel([
-  () => agent(args.scope.prompt, { label: 'scope', tier: 'small', schema: args.scope.schema }),
+  () => agent(args.scope.prompt, { label: 'scope', tier: 'small', agentType: 'sdd-scout', schema: args.scope.schema }),
   () => agent(args.repo.prompt, { label: 'repo context', tier: 'small', agentType: 'sdd-scout', schema: args.repo.schema }),
-  () => agent(args.questions.prompt, { label: 'open questions', tier: 'small', schema: args.questions.schema }),
+  () => agent(args.questions.prompt, { label: 'open questions', tier: 'small', agentType: 'sdd-scout', schema: args.questions.schema }),
 ])
 return { scope: results[0], repo: results[1], questions: results[2] }`;
 
@@ -29,7 +29,7 @@ export const DISCOVERY_SCRIPT = `export const meta = {
   phases: [{ title: 'Probe plan' }, { title: 'Probe' }, { title: 'Synthesize' }],
 }
 phase('Probe plan')
-const plan = await agent(args.plan.prompt, { label: 'plan probes', tier: 'small', schema: args.plan.schema })
+const plan = await agent(args.plan.prompt, { label: 'plan probes', tier: 'small', agentType: 'sdd-scout', schema: args.plan.schema })
 let probes = plan && Array.isArray(plan.probes) ? plan.probes.filter((p) => p && p.question) : []
 if (probes.length === 0) probes = [args.fallbackProbe]
 probes = probes.slice(0, args.maxProbes)
@@ -46,7 +46,7 @@ const results = probes.map((probe, i) => ({ probe, result: found[i] }))
 phase('Synthesize')
 const report = await agent(
   args.synth.prompt + '\\n\\n<probe-results>\\n' + JSON.stringify(results, null, 2) + '\\n</probe-results>',
-  { label: 'synthesize', tier: 'small', schema: args.synth.schema }
+  { label: 'synthesize', tier: 'small', agentType: 'sdd-scout', schema: args.synth.schema }
 )
 return { probes, results, markdown: report && report.markdown }`;
 
@@ -56,7 +56,7 @@ export const RESEARCH_SCRIPT = `export const meta = {
   phases: [{ title: 'Queries' }, { title: 'Gather' }, { title: 'Verify' }, { title: 'Report' }],
 }
 phase('Queries')
-const plan = await agent(args.queries.prompt, { label: 'plan queries', tier: 'small', schema: args.queries.schema })
+const plan = await agent(args.queries.prompt, { label: 'plan queries', tier: 'small', agentType: 'sdd-scout', schema: args.queries.schema })
 const planned = plan && Array.isArray(plan.queries) ? plan.queries.filter((q) => typeof q === 'string' && q.trim()) : []
 const queries = (planned.length ? planned : [args.question]).slice(0, args.angles)
 
@@ -69,13 +69,13 @@ const sources = gathered.filter(Boolean).flatMap((g) => g.sources || [])
 phase('Verify')
 const verdict = await agent(
   args.verify.prompt + '\\n\\nSOURCES JSON:\\n' + JSON.stringify(sources),
-  { label: 'cross-check', tier: 'medium', schema: args.verify.schema }
+  { label: 'cross-check', tier: 'medium', agentType: 'sdd-scout', schema: args.verify.schema }
 )
 
 phase('Report')
 return await agent(
   args.report.prompt + '\\n\\nSUPPORTED CLAIMS JSON:\\n' + JSON.stringify((verdict && verdict.supported) || []),
-  { label: 'write report', tier: 'medium', schema: args.report.schema }
+  { label: 'write report', tier: 'medium', agentType: 'sdd-scout', schema: args.report.schema }
 )`;
 
 const str = { type: "string" } as const;
@@ -164,12 +164,12 @@ export function draftArgs(input: {
 	const task =
 		input.draft && input.feedback
 			? `Revise this spec draft to address the user's feedback. Keep everything the feedback does not touch.\n\n<draft>\n${input.draft}\n</draft>\n\n<feedback>\n${input.feedback}\n</feedback>`
-			: "Write a feature spec from this input.";
+			: "Compose a feature spec from this input.";
 	return {
 		label: input.draft ? "revise spec" : "draft spec",
 		tier: "small",
 		prompt: withMemory(
-			`${context}\n\n${task}\n\nThe spec describes what and why, not how. Use this markdown template:\n\n${SPEC_TEMPLATE}\n\nAlso return a short kebab-case slug for the feature (for example phone-number-field) and a title.`,
+			`${context}\n\n${task}\n\nThe spec describes what and why, not how. Return it in the markdown field and do not create or edit any file. Use this markdown template:\n\n${SPEC_TEMPLATE}\n\nAlso return a short kebab-case slug for the feature (for example phone-number-field) and a title.`,
 			input.memory,
 		),
 		schema: obj({ slug: str, title: str, markdown: str }),
@@ -199,7 +199,7 @@ export function discoveryArgs(spec: string, existing: string | undefined, memory
 			schema: FINDINGS_SCHEMA,
 		},
 		synth: {
-			prompt: `<spec>\n${spec}\n</spec>${existing ? `\n\n<existing-discovery>\n${existing}\n</existing-discovery>\n\nMerge the new results into the existing discovery; keep still-valid findings and replace stale ones.` : ""}\n\nWrite discovery.md from the probe results. Sections: # Discovery, ## Summary, ## Findings (one subsection per probe, each finding with its evidence), ## Pre-answered questions, ## Remaining gaps, ## Relevant files. Keep evidence exactly as reported.`,
+			prompt: `<spec>\n${spec}\n</spec>${existing ? `\n\n<existing-discovery>\n${existing}\n</existing-discovery>\n\nMerge the new results into the existing discovery; keep still-valid findings and replace stale ones.` : ""}\n\nCompose the discovery report from the probe results and return it in the markdown field. Do not create or edit any file. Sections: # Discovery, ## Summary, ## Findings (one subsection per probe, each finding with its evidence), ## Pre-answered questions, ## Remaining gaps, ## Relevant files. Keep evidence exactly as reported.`,
 			schema: obj({ markdown: str }),
 		},
 	};
@@ -224,7 +224,7 @@ export function researchArgs(topic: string, spec: string, discovery: string | un
 			schema: obj({ supported: { type: "array", items: obj({ claim: str, sources: strList }) }, discarded: strList }, ["supported"]),
 		},
 		report: {
-			prompt: `${context}\n\nTopic: ${topic}\n\nWrite a research report from the supported claims only. Relate them to the feature above: what they imply for it and what you recommend. Say so when the evidence is thin.`,
+			prompt: `${context}\n\nTopic: ${topic}\n\nCompose a research report from the supported claims only, returned in the schema fields. Do not create or edit any file. Relate them to the feature above: what they imply for it and what you recommend. Say so when the evidence is thin.`,
 			schema: obj({
 				summary: str,
 				findings: { type: "array", items: obj({ claim: str, sources: strList }) },

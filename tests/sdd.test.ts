@@ -189,10 +189,7 @@ test("discovery falls back to one code probe when planning returns none", async 
 test("enrich runs scope, repo scout and questions in parallel", async () => {
 	const { calls, result } = await runStub(ENRICH_SCRIPT, enrichArgs("add phone", "<memory>m</memory>"), (call) => ({ label: call.label }));
 	assert.deepEqual(calls.map((c) => c.label).sort(), ["open questions", "repo context", "scope"]);
-	assert.deepEqual(
-		calls.filter((c) => c.scout).map((c) => c.label),
-		["repo context"],
-	);
+	assert.ok(calls.every((c) => c.scout));
 	assert.match(calls.find((c) => c.label === "scope")?.prompt ?? "", /<memory>m<\/memory>/);
 	assert.deepEqual(result.scope, { label: "scope" });
 });
@@ -607,4 +604,19 @@ test("progress widget spinner redraws on a timer and stops on dispose", async (t
 	widget.dispose();
 	t.mock.timers.tick(800);
 	assert.equal(renders, 2, "no redraws after dispose");
+});
+
+test("every SDD workflow agent runs read-only and is told not to write files", async () => {
+	const runs = [
+		await runStub(SINGLE_SCRIPT, { prompt: "p", label: "draft spec", tier: "small", schema: { type: "object" } }, () => ({})),
+		await runStub(ENRICH_SCRIPT, enrichArgs("r", ""), () => ({})),
+		await runStub(DISCOVERY_SCRIPT, discoveryArgs("SPEC", undefined, ""), (c) => (c.label === "synthesize" ? { markdown: "m" } : { probes: [], findings: [] })),
+		await runStub(RESEARCH_SCRIPT, researchArgs("t", "SPEC", undefined), () => ({ queries: ["q"], sources: [], supported: [] })),
+	];
+	const calls = runs.flatMap((r) => r.calls);
+	assert.equal(calls.length, 11);
+	assert.deepEqual(calls.filter((c) => !c.scout).map((c) => c.label), []);
+	const synth = runs[2].calls.find((c) => c.label === "synthesize");
+	assert.match(synth?.prompt ?? "", /return it in the markdown field\. Do not create or edit any file/);
+	assert.doesNotMatch(synth?.prompt ?? "", /Write discovery\.md/);
 });
