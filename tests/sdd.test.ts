@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { stripVTControlCharacters as stripAnsi } from "node:util";
 import { parseWorkflowScript, runWorkflow } from "@quintinshaw/pi-dynamic-workflows";
 import register from "../agent/extensions/sdd/index.ts";
 import { memoryBlock, parseEntries } from "../agent/extensions/sdd/memory.ts";
@@ -535,7 +536,9 @@ test("runSdd stops on Escape, rejects empty results and clears its widget", asyn
 	assert.ok(seen.agentRegistry.has("sdd-scout"));
 	assert.equal(onInput, undefined, "escape listener removed");
 	assert.equal(widgets.at(-1), undefined, "widget cleared");
-	assert.ok((widgets[0] as string[]).some((l) => l.includes("agent one")));
+	const widget = (widgets[0] as any)({ requestRender: () => {} }, { fg: (_c: string, t: string) => t, bold: (t: string) => t });
+	assert.ok(widget.render(60).some((l: string) => l.includes("agent one")));
+	widget.dispose();
 	await assert.rejects(runSdd(ctx, "s", {}, { label: "empty", maxAgents: 1, run: async () => ({ result: null }) as any }), /empty returned no result/);
 });
 
@@ -543,4 +546,65 @@ test("plan sections ignore headings inside code fences", () => {
 	const plan = VALID_PLAN.replace("- `mise run test` - unit tests", "```bash\n# run everything\nmise run test\n```\n- `mise run test` - unit tests");
 	assert.deepEqual(validatePlan(plan), []);
 	assert.deepEqual(validatePlan(VALID_PLAN.replace("## Tasks", "## tasks")), []);
+});
+
+test("progress widget draws a bordered box with a spinner, recent results and stats", async () => {
+	const { renderProgress, formatTokens } = await import("../agent/extensions/sdd/progress.ts");
+	const { visibleWidth } = await import("@earendil-works/pi-tui");
+	const paint = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+	const running = new Map(Array.from({ length: 12 }, (_, i) => [`r${i}`, `probe ${i + 1}: ${"long title ".repeat(6)}`] as [string, string]));
+	const state = { label: "discovery", phase: "Probe", running, finished: [{ label: "probe 0: ok", failed: false }, { label: "probe x", failed: true }], done: 1, failed: 1, tokens: 632284 };
+	const lines = renderProgress(state, paint, 50, 3);
+	assert.ok(lines.every((l) => visibleWidth(l) === 50), lines.join("\n"));
+	assert.match(lines[0], /^╭─ discovery · Probe ─+╮$/);
+	assert.match(stripAnsi(lines.at(-1) ?? ""), /^╰─ 1 done · 1 failed · 12 running · 632k tokens …╯$/, "footer is cut to fit");
+	assert.match(renderProgress(state, paint, 80, 0).at(-1) ?? "", /^╰─ 1 done · 1 failed · 12 running · 632k tokens · esc to stop ─+╯$/);
+	assert.match(lines[1], /│ ✓ probe 0: ok/);
+	assert.match(lines[2], /│ ✗ probe x/);
+	assert.match(lines[3], /│ ⠸ probe 1: long title/);
+	assert.equal(lines.length, 10, "8 rows plus 2 borders");
+	assert.match(lines[8], /\+7 more running/);
+	assert.equal(formatTokens(950), "950");
+	assert.equal(formatTokens(1_250_000), "1.3M");
+	const empty = renderProgress({ ...state, running: new Map(), finished: [], done: 0, failed: 0, tokens: 0 }, paint, 30, 0);
+	assert.match(empty[1], /⠋ starting/);
+});
+
+test("formatTokens rounds across unit boundaries", async () => {
+	const { formatTokens } = await import("../agent/extensions/sdd/progress.ts");
+	assert.deepEqual([999, 1_000, 999_499, 999_600, 1_000_000].map(formatTokens), ["999", "1k", "999k", "1.0M", "1.0M"]);
+});
+
+test("progress widget without the TUI pushes plain bordered lines", async () => {
+	const { progressWidget } = await import("../agent/extensions/sdd/progress.ts");
+	const widgets: unknown[] = [];
+	const ctx: any = { mode: "rpc", hasUI: true, ui: { setWidget: (_k: string, v: unknown) => widgets.push(v) } };
+	const view = progressWidget(ctx, "discovery");
+	assert.match((widgets[0] as string[])[1], /starting/);
+	view.options.onAgentStart({ id: "1", label: "probe 1" });
+	view.options.onAgentEnd({ id: "1", label: "probe 1", tokens: 1500 });
+	const last = widgets.at(-1) as string[];
+	assert.ok(last.every((l) => l.length === 80));
+	assert.match(last.join("\n"), /✓ probe 1[\s\S]*1 done · 0 running · 2k tokens/);
+	view.clear();
+	assert.equal(widgets.at(-1), undefined);
+});
+
+test("progress widget spinner redraws on a timer and stops on dispose", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { progressWidget } = await import("../agent/extensions/sdd/progress.ts");
+	let factory: any;
+	const ctx: any = { mode: "tui", hasUI: true, ui: { setWidget: (_k: string, v: unknown) => (factory = v) } };
+	const view = progressWidget(ctx, "discovery");
+	let renders = 0;
+	const widget = factory({ requestRender: () => renders++ }, { fg: (_c: string, s: string) => s, bold: (s: string) => s });
+	const first = widget.render(40)[1];
+	t.mock.timers.tick(80);
+	assert.equal(renders, 1);
+	assert.notEqual(widget.render(40)[1], first, "spinner frame advanced");
+	view.options.onAgentStart({ id: "1", label: "probe 1" });
+	assert.equal(renders, 2, "events redraw immediately");
+	widget.dispose();
+	t.mock.timers.tick(800);
+	assert.equal(renders, 2, "no redraws after dispose");
 });
