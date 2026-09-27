@@ -51,7 +51,7 @@ function sectionBounds(lines: string[], heading: string): { start: number; end: 
   return { start, end: end < 0 ? lines.length : end }
 }
 
-function section(markdown: string, heading: string): string | undefined {
+export function readSection(markdown: string, heading: string): string | undefined {
   const lines = markdown.split('\n')
   const bounds = sectionBounds(lines, heading)
   return (
@@ -73,11 +73,11 @@ export function replaceSection(markdown: string, heading: string, body: string):
 
 export function validatePlan(markdown: string): string[] {
   const errors: string[] = []
-  const tasks = section(markdown, 'Tasks')
+  const tasks = readSection(markdown, 'Tasks')
   if (!tasks || !/^\s*- \[[ x]\]/m.test(tasks)) errors.push('"## Tasks" needs at least one "- [ ]" checkbox item')
-  const criteria = section(markdown, 'Acceptance criteria')
+  const criteria = readSection(markdown, 'Acceptance criteria')
   if (!criteria || !/^\s*[-*\d]/m.test(criteria)) errors.push('"## Acceptance criteria" needs at least one list item')
-  const pipeline = section(markdown, 'Validation pipeline')
+  const pipeline = readSection(markdown, 'Validation pipeline')
   if (!pipeline || !/`[^`]+`/.test(pipeline))
     errors.push('"## Validation pipeline" needs at least one command in backticks')
   return errors
@@ -157,5 +157,7 @@ Rules:
 - Do the tasks in order. After finishing each task, tick its checkbox in ${input.planPath} with the edit tool.
 - If a task is blocked or the plan is wrong, stop and ask with ask_user rather than guessing.
 - When every task is done, run each command in the validation pipeline and check every acceptance criterion.
-- Finish by calling sdd_complete with feature "${input.slug}" and one result per acceptance criterion: pass or fail, with evidence.`
+- Then call sdd_verify with feature "${input.slug}". It runs three read-only review agents over the branch scope and returns their report.
+- On REQUEST CHANGES, fix every critical issue and every must-kill item the report lists, then call sdd_verify again. Repeat until it approves.
+- Finish by calling sdd_complete with feature "${input.slug}" and one result per acceptance criterion: pass or fail, with evidence. sdd_complete refuses to close the feature until verification approves.`
 }

@@ -205,21 +205,18 @@ function reports(overrides: Partial<Reports> = {}): Reports {
       verdict: 'APPROVE',
       overview: 'Looks fine.',
       findings: [],
-      doneWell: ['Clear naming'],
       verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'yes' },
     },
     testEngineer: {
       verdict: 'APPROVE',
       overview: 'Coverage is fine.',
       findings: [],
-      doneWell: ['Good test isolation'],
       coverageGaps: [],
       smokeTest: { commands: ['npm test'], suite: 'passed', manual: '', blocked: [] },
     },
     commentAuditor: {
       verdict: 'APPROVE',
       overview: 'Comments are clean.',
-      doneWell: [],
       mustKill: [],
       correctness: [],
       nits: [],
@@ -303,7 +300,6 @@ test('renderSummary contains every section in order with none for empty lists', 
     '### Smoke Test Result',
     '### Verification Story',
     '### Comment Audit',
-    "### What's Done Well",
   ]
   let cursor = -1
   for (const h of headings) {

@@ -70,7 +70,6 @@ Return your findings in the schema fields you were given. Do not write a markdow
 - `overview`: 1-2 sentences. Files scanned, comments found, comments to delete.
 - `mustKill`, `correctness`, `nits`, `kept`: one item per comment with `file`, `line`, `issue`, and `fix`. `issue` quotes the comment excerpt and says why it lands in that category. `fix` is `delete`, plus the refactor target symbol and reshape when the comment covers a surprise. For `correctness`, `fix` names the rule it hides or the bug it masks and the guilty symbol. For `kept`, `issue` holds the keep-list item and proof; omit `fix`.
 - `skipped`: one string per file or region.
-- `doneWell`: comment hygiene the change gets right. Empty is fine when nothing stands out.
 
 ## Rules
 

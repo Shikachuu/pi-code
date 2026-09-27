@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +24,7 @@ import {
   readDoc,
   readState,
   setPhase,
+  setVerifyRounds,
   slugify,
   splitArgs,
   writeDoc,
@@ -303,10 +305,12 @@ function fakePi() {
   const tools = new Map<string, FakeTool>()
   const handlers = new Map<string, FakeHandler>()
   const entries: { type: string; data: Record<string, string> }[] = []
-  let active = ['read', 'sdd_save_plan', 'sdd_complete']
+  const renderers = new Map<string, (entry: unknown) => unknown>()
+  let active = ['read', 'sdd_save_plan', 'sdd_complete', 'sdd_verify']
   const pi = {
     registerCommand: (name: string, cmd: FakeCommand) => commands.set(name, cmd),
     registerTool: (t: FakeTool) => tools.set(t.name, t),
+    registerEntryRenderer: (type: string, renderer: (entry: unknown) => unknown) => renderers.set(type, renderer),
     on: (event: string, fn: FakeHandler) => handlers.set(event, fn),
     appendEntry: (type: string, data: Record<string, string>) => entries.push({ type, data }),
     getActiveTools: () => active,
@@ -318,10 +322,10 @@ function fakePi() {
     setThinkingLevel: () => {},
     getThinkingLevel: () => 'off' as const,
   }
-  return { pi: asMock<ExtensionAPI>(pi), commands, tools, handlers, entries, active: () => active }
+  return { pi: asMock<ExtensionAPI>(pi), commands, tools, handlers, entries, renderers, active: () => active }
 }
 
-function fakeCtx(cwd: string, selects: string[] = [], inputs: string[] = []) {
+function fakeCtx(cwd: string, selects: string[] = [], inputs: string[] = [], confirms: boolean[] = []) {
   const notes: string[] = []
   const ctx: FakeCtx = {
     cwd,
@@ -335,7 +339,7 @@ function fakeCtx(cwd: string, selects: string[] = [], inputs: string[] = []) {
       input: async () => inputs.shift(),
       notify: (msg: string) => notes.push(msg),
       setWidget: () => {},
-      confirm: async () => true,
+      confirm: async () => (confirms.length ? (confirms.shift() ?? true) : true),
     },
   }
   return { notes, ctx }
@@ -345,7 +349,7 @@ test('registers the SDD commands and session tools', () => {
   const { pi, commands, tools, handlers } = fakePi()
   register(pi)
   expect([...commands.keys()].sort()).toEqual(['discover', 'implement', 'plan', 'research', 'sdd', 'spec'])
-  expect([...tools.keys()].sort()).toEqual(['sdd_complete', 'sdd_save_plan'])
+  expect([...tools.keys()].sort()).toEqual(['sdd_complete', 'sdd_save_plan', 'sdd_verify'])
   expect(handlers.has('session_start')).toBe(true)
 })
 
@@ -390,7 +394,7 @@ test('sdd_save_plan rejects invalid plans, relays feedback and saves on accept',
   expect(entries.map((e) => e.data.status)).toEqual(['changes requested', 'accepted'])
 })
 
-test('sdd_complete appends results and closes the feature only when all pass', async () => {
+test('sdd_complete refuses to close the feature until verification approves', async () => {
   const cwd = tmp()
   const { slug } = createFeature(cwd, 'phone', 'Phone')
   writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
@@ -404,10 +408,31 @@ test('sdd_complete appends results and closes the feature only when all pass', a
       undefined,
       fakeCtx(cwd).ctx,
     )
+  const record = (verdict?: string) =>
+    writeDoc(
+      cwd,
+      slug,
+      'plan.md',
+      `${VALID_PLAN}${verdict ? `\n## Verification\n\n- verdict: ${verdict}\n\nreport\n` : ''}`,
+    )
+
   expect(toolText(await complete('fail'))).toMatch(/1 criteria failed/)
   expect(readState(cwd, slug)?.phase).toBe('implementing')
-  await complete('pass')
+
+  record()
+  const unverified = toolText(await complete('pass'))
+  expect(unverified).toMatch(/Call sdd_verify with feature "phone" first/)
+  expect(readState(cwd, slug)?.phase, 'no verdict, no close').toBe('implementing')
+
+  record('REQUEST CHANGES')
+  expect(toolText(await complete('pass'))).toMatch(/Verification recorded REQUEST CHANGES/)
+  expect(readState(cwd, slug)?.phase).toBe('implementing')
+
+  setVerifyRounds(cwd, slug, 2)
+  record('APPROVE')
+  expect(toolText(await complete('pass'))).toMatch(/the feature is done/)
   expect(readState(cwd, slug)?.phase).toBe('done')
+  expect(readState(cwd, slug)?.verifyRounds, 'the round counter resets on close').toBe(0)
   expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Results\n\n- \[x\] saves phone: pass - tests pass\n$/)
 })
 
@@ -558,7 +583,7 @@ test('feature names that are not slugs never reach the filesystem', async () => 
 test('sdd_complete replaces earlier results instead of stacking them', async () => {
   const cwd = tmp()
   const { slug } = createFeature(cwd, 'phone', 'Phone')
-  writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
+  writeDoc(cwd, slug, 'plan.md', `${VALID_PLAN}\n## Verification\n\n- verdict: APPROVE\n\nreport\n`)
   const { pi, tools } = fakePi()
   register(pi)
   const complete = (status: string) =>
@@ -576,6 +601,189 @@ test('sdd_complete replaces earlier results instead of stacking them', async () 
   expect(plan.split('## Results').length).toBe(2)
   expect(plan).toMatch(/- \[x\] c: pass - e\n$/)
   expect(plan.startsWith(VALID_PLAN.trimEnd())).toBe(true)
+})
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
+}
+
+function initRepo(): string {
+  const cwd = tmp()
+  git(cwd, ['init', '-b', 'main'])
+  git(cwd, ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init'])
+  return cwd
+}
+
+function writeAgentDefs(cwd: string) {
+  mkdirSync(join(cwd, 'agent', 'agents'), { recursive: true })
+  for (const name of ['code-reviewer', 'test-engineer', 'comment-auditor']) {
+    writeFileSync(
+      join(cwd, 'agent', 'agents', `${name}.md`),
+      `---\nname: ${name}\ndisallowedTools: edit, write\n---\nbody`,
+    )
+  }
+}
+
+async function withAgentDir<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.PI_CODING_AGENT_DIR
+  process.env.PI_CODING_AGENT_DIR = join(cwd, 'agent')
+  try {
+    return await fn()
+  } finally {
+    if (prev === undefined) delete process.env.PI_CODING_AGENT_DIR
+    else process.env.PI_CODING_AGENT_DIR = prev
+  }
+}
+
+function verifyReports(verdictLine: 'APPROVE' | 'REQUEST CHANGES') {
+  return {
+    codeReviewer: {
+      verdict: verdictLine,
+      overview: 'Reviewed the change.',
+      findings:
+        verdictLine === 'APPROVE'
+          ? []
+          : [{ severity: 'critical', file: 'a.ts', line: 1, issue: 'null deref', fix: 'guard it' }],
+      verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'no' },
+    },
+    testEngineer: {
+      verdict: verdictLine,
+      overview: 'Coverage is fine.',
+      findings: [],
+      coverageGaps: [],
+      smokeTest: { commands: ['npm test'], suite: 'passed', manual: '', blocked: [] },
+    },
+    commentAuditor: {
+      verdict: verdictLine,
+      overview: 'Comments are clean.',
+      mustKill: verdictLine === 'APPROVE' ? [] : [{ file: 'a.ts', line: 3, issue: 'narration', fix: 'delete' }],
+      correctness: [],
+      nits: [],
+      kept: [],
+      skipped: [],
+    },
+  }
+}
+
+function featureRepo(): { cwd: string; slug: string } {
+  const cwd = initRepo()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
+  writeAgentDefs(cwd)
+  writeFileSync(join(cwd, 'a.ts'), 'changed\n')
+  return { cwd, slug }
+}
+
+function verifyRun(verdictLine: 'APPROVE' | 'REQUEST CHANGES') {
+  return asMock<WorkflowRunner>(async () => asMock({ result: verifyReports(verdictLine) }))
+}
+
+test('sdd_verify returns the whole report as fix instructions and holds the feature in implementing', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools, entries } = fakePi()
+  register(pi, { run: verifyRun('REQUEST CHANGES') })
+  await withAgentDir(cwd, async () => {
+    const result = await tool(tools, 'sdd_verify').execute(
+      'id',
+      { feature: slug },
+      undefined,
+      undefined,
+      fakeCtx(cwd).ctx,
+    )
+    const text = toolText(result)
+    expect(text).toMatch(/REQUEST CHANGES \(round 1\)/)
+    expect(text).toMatch(/## Verification Summary/)
+    expect(text).toMatch(/null deref -> guard it/)
+    expect(text).toMatch(/a\.ts:3 narration -> delete/)
+  })
+  expect(entries.map((e) => `${e.type} (${e.data.status})`)).toEqual(['verify-doc (REQUEST CHANGES)'])
+  const plan = readDoc(cwd, slug, 'plan.md') ?? ''
+  expect(plan).toMatch(/- verdict: REQUEST CHANGES\n\n## Verification Summary/)
+  expect(plan).toMatch(/## Verification\n\n- verdict: REQUEST CHANGES/)
+  expect(plan.split('\n## Verification\n').length - 1, 'the section is replaced, not stacked').toBe(1)
+  expect(readState(cwd, slug)?.phase).toBe('implementing')
+  expect(readState(cwd, slug)?.verifyRounds).toBe(1)
+})
+
+test('sdd_verify sets verifying and clears the round counter on APPROVE', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools, entries } = fakePi()
+  register(pi, { run: verifyRun('APPROVE') })
+  setVerifyRounds(cwd, slug, 2)
+  await withAgentDir(cwd, async () => {
+    const result = await tool(tools, 'sdd_verify').execute(
+      'id',
+      { feature: slug },
+      undefined,
+      undefined,
+      fakeCtx(cwd).ctx,
+    )
+    expect(toolText(result)).toMatch(/Verification approved/)
+  })
+  expect(entries.map((e) => e.data.status)).toEqual(['APPROVE'])
+  expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Verification\n\n- verdict: APPROVE/)
+  expect(readState(cwd, slug)?.phase).toBe('verifying')
+  expect(readState(cwd, slug)?.verifyRounds).toBe(0)
+})
+
+test('sdd_verify approves without an agent pass when the scope has no changes', async () => {
+  const cwd = initRepo()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
+  git(cwd, ['add', '-A'])
+  git(cwd, ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '-m', 'feature'])
+  const run = verifyRun('REQUEST CHANGES')
+  const { pi, tools, entries } = fakePi()
+  register(pi, { run })
+  const result = await tool(tools, 'sdd_verify').execute(
+    'id',
+    { feature: slug },
+    undefined,
+    undefined,
+    fakeCtx(cwd).ctx,
+  )
+  expect(toolText(result)).toMatch(/No changed files/)
+  expect(entries.length, 'nothing rendered').toBe(0)
+  expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Verification\n\n- verdict: APPROVE\n\nNo changed files/)
+  expect(readState(cwd, slug)?.phase).toBe('verifying')
+})
+
+test('sdd_verify asks the user for a decision on the third REQUEST CHANGES round and can stop', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools } = fakePi()
+  register(pi, { run: verifyRun('REQUEST CHANGES') })
+  const gate = (ctx: FakeCtx) => tool(tools, 'sdd_verify').execute('id', { feature: slug }, undefined, undefined, ctx)
+  await withAgentDir(cwd, async () => {
+    expect(toolText(await gate(fakeCtx(cwd).ctx))).toMatch(/round 1/)
+    expect(toolText(await gate(fakeCtx(cwd).ctx))).toMatch(/round 2/)
+    const stopped = fakeCtx(cwd, [], [], [false])
+    const text = toolText(await gate(stopped.ctx))
+    expect(text).toMatch(/Stopped after 3 REQUEST CHANGES rounds/)
+    expect(text).toMatch(/ask_user/)
+    expect(readState(cwd, slug)?.phase).toBe('implementing')
+  })
+  expect(readState(cwd, slug)?.verifyRounds).toBe(3)
+})
+
+test('sdd_verify reports a failed verification pass instead of throwing', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools } = fakePi()
+  register(pi, {
+    run: asMock<WorkflowRunner>(async () => {
+      throw new Error('verify was stopped')
+    }),
+  })
+  await withAgentDir(cwd, async () => {
+    const result = await tool(tools, 'sdd_verify').execute(
+      'id',
+      { feature: slug },
+      undefined,
+      undefined,
+      fakeCtx(cwd).ctx,
+    )
+    expect(toolText(result)).toMatch(/Verification did not finish: verify was stopped/)
+  })
+  expect(readState(cwd, slug)?.phase, 'phase is untouched').toBe('spec')
 })
 
 test('toQuestions assigns ids that cannot collide', async () => {
@@ -635,7 +843,7 @@ test('/implement marks the feature implementing only once the new session starts
   expect(switched, 'the new session keeps the selected model and thinking level').toEqual([selected, 'medium'])
   expect(readState(cwd, slug)?.phase).toBe('implementing')
   expect(sent()).toMatch(/sdd_complete with feature "phone"/)
-  expect(active()).toEqual(['read', 'sdd_complete'])
+  expect(active()).toEqual(['read', 'sdd_complete', 'sdd_verify'])
   expect(entries.at(-1)).toEqual({ type: 'sdd-session', data: { kind: 'implement', slug } })
 
   setPhase(cwd, slug, 'done')

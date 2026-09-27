@@ -9,7 +9,7 @@ import { formatScope, isLarge, resolveScope, type Scope } from './scope.ts'
 import { VERIFY_AGENTS, VERIFY_SCRIPT, verifyArgs } from './workflow.ts'
 
 export interface VerificationOptions {
-  run?: WorkflowRunner
+  run?: WorkflowRunner | undefined
 }
 
 // The ask-user DOC_ENTRY renderer collapses to a one-line header until the user
@@ -25,7 +25,7 @@ export interface VerifyDocEntry {
   status: string
 }
 
-function registerVerifyDocRenderer(pi: ExtensionAPI) {
+export function registerVerifyDocRenderer(pi: ExtensionAPI) {
   pi.registerEntryRenderer<VerifyDocEntry>(VERIFY_DOC_ENTRY, (entry, _options, theme) => {
     const data = entry.data
     if (!data) return undefined
@@ -68,19 +68,26 @@ export default function (pi: ExtensionAPI, options: VerificationOptions = {}) {
   })
 }
 
-async function handleVerify(pi: ExtensionAPI, ctx: ExtensionContext, args: string, options: VerificationOptions) {
-  const target = args.trim()
+export interface RunVerificationOptions extends VerificationOptions {
+  target?: string | undefined
+}
 
-  let scope: Scope
-  try {
-    scope = resolveScope(ctx.cwd, target || undefined)
-  } catch (error) {
-    return void ctx.ui.notify(`/verify: ${(error as Error).message}`, 'error')
-  }
+export interface VerificationResult {
+  scope: Scope
+  markdown: string
+  verdict: 'APPROVE' | 'REQUEST CHANGES'
+}
 
-  if (scope.files.length === 0 && scope.wholeFiles.length === 0) {
-    return void ctx.ui.notify('Nothing to verify: no changes found for this scope', 'info')
-  }
+export async function runVerification(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  options: RunVerificationOptions = {},
+): Promise<VerificationResult | null> {
+  const target = options.target?.trim() ?? ''
+
+  const scope = resolveScope(ctx.cwd, target || undefined)
+
+  if (scope.files.length === 0 && scope.wholeFiles.length === 0) return null
 
   if (isLarge(scope.stats)) {
     ctx.ui.notify(
@@ -90,7 +97,7 @@ async function handleVerify(pi: ExtensionAPI, ctx: ExtensionContext, args: strin
   }
 
   const guardError = checkAgentRegistry(ctx.cwd)
-  if (guardError) return void ctx.ui.notify(`/verify: ${guardError}`, 'error')
+  if (guardError) throw new Error(guardError)
 
   const reports = await runSdd<Reports>(ctx, VERIFY_SCRIPT, verifyArgs(scope), {
     label: 'verify',
@@ -99,14 +106,20 @@ async function handleVerify(pi: ExtensionAPI, ctx: ExtensionContext, args: strin
   })
 
   const markdown = renderSummary(scope, reports)
-  const verdictLine = computeVerdict(reports, mergeFindings(reports))
-
+  const result: VerificationResult = { scope, markdown, verdict: computeVerdict(reports, mergeFindings(reports)) }
   pi.appendEntry<VerifyDocEntry>(VERIFY_DOC_ENTRY, {
     title: `Verify: ${target || '(default)'}`,
     markdown,
-    status: verdictLine,
+    status: result.verdict,
   })
-  pi.sendMessage({ customType: 'verify-report', content: markdown, display: false })
+  return result
+}
+
+async function handleVerify(pi: ExtensionAPI, ctx: ExtensionContext, args: string, options: VerificationOptions) {
+  const target = args.trim()
+  const result = await runVerification(pi, ctx, { ...options, target })
+  if (!result) return void ctx.ui.notify('Nothing to verify: no changes found for this scope', 'info')
+  pi.sendMessage({ customType: 'verify-report', content: result.markdown, display: false })
 }
 
 export { formatScope, resolveScope, isLarge }

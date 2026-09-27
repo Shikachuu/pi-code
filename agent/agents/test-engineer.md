@@ -74,7 +74,6 @@ Return your findings in the schema fields you were given. Do not write a markdow
 - `smokeTest.suite`: pass or fail, with the relevant output. If you did not run it, say so and why.
 - `smokeTest.manual`: the happy path and error path you exercised and what you observed, or why you could not.
 - `smokeTest.blocked`: each missing requirement that stopped a run. Empty when nothing blocked you.
-- `doneWell`: what is tested well. Always include at least one.
 
 ## Rules
 

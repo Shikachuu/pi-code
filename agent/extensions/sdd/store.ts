@@ -3,12 +3,13 @@ import { join } from 'node:path'
 
 import { CONFIG_DIR_NAME } from '@earendil-works/pi-coding-agent'
 
-export type Phase = 'spec' | 'discovered' | 'planned' | 'implementing' | 'done'
+export type Phase = 'spec' | 'discovered' | 'planned' | 'implementing' | 'verifying' | 'done'
 
 export interface FeatureState {
   slug: string
   title: string
   phase: Phase
+  verifyRounds?: number
   createdAt: string
   updatedAt: string
 }
@@ -70,6 +71,12 @@ export function setPhase(cwd: string, slug: string, phase: Phase, now = new Date
   const state = readState(cwd, slug)
   if (!state) throw new Error(`Unknown feature "${slug}"`)
   return writeState(cwd, { ...state, phase, updatedAt: now.toISOString() })
+}
+
+export function setVerifyRounds(cwd: string, slug: string, rounds: number, now = new Date()): FeatureState {
+  const state = readState(cwd, slug)
+  if (!state) throw new Error(`Unknown feature "${slug}"`)
+  return writeState(cwd, { ...state, verifyRounds: rounds, updatedAt: now.toISOString() })
 }
 
 export function listFeatures(cwd: string): FeatureState[] {

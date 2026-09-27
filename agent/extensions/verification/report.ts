@@ -30,14 +30,12 @@ const BASE_REPORT = {
   verdict: { type: 'string', enum: ['APPROVE', 'REQUEST CHANGES'] },
   overview: str,
   findings: { type: 'array', items: FINDING_SCHEMA },
-  doneWell: strList,
 }
 
 export interface BaseReport {
   verdict: 'APPROVE' | 'REQUEST CHANGES'
   overview: string
   findings: Finding[]
-  doneWell: string[]
 }
 
 export interface CodeReviewerReport extends BaseReport {
@@ -72,7 +70,6 @@ const AUDIT_ITEM_SCHEMA = obj({ file: str, line: { type: 'number' }, issue: str,
 export interface CommentAuditorReport {
   verdict: 'APPROVE' | 'REQUEST CHANGES'
   overview: string
-  doneWell: string[]
   mustKill: AuditItem[]
   correctness: AuditItem[]
   nits: AuditItem[]
@@ -83,7 +80,6 @@ export interface CommentAuditorReport {
 export const COMMENT_AUDITOR_SCHEMA = obj({
   verdict: { type: 'string', enum: ['APPROVE', 'REQUEST CHANGES'] },
   overview: str,
-  doneWell: strList,
   mustKill: { type: 'array', items: AUDIT_ITEM_SCHEMA },
   correctness: { type: 'array', items: AUDIT_ITEM_SCHEMA },
   nits: { type: 'array', items: AUDIT_ITEM_SCHEMA },
@@ -208,12 +204,6 @@ export function renderSummary(scope: Scope, reports: Reports): string {
   ].filter(Boolean)
   const overview = overviewParts.length ? overviewParts.join(' ') : 'No reports were returned.'
 
-  const doneWell = [
-    ...(reports.codeReviewer?.doneWell ?? []),
-    ...(reports.testEngineer?.doneWell ?? []),
-    ...(reports.commentAuditor?.doneWell ?? []),
-  ]
-
   const parts: string[] = []
   parts.push('## Verification Summary')
   parts.push(`**Verdict:** ${v}`)
@@ -271,8 +261,6 @@ export function renderSummary(scope: Scope, reports: Reports): string {
   } else {
     parts.push('### Comment Audit (from comment-auditor)\ncomment-auditor did not return a report')
   }
-
-  parts.push(section("What's Done Well", doneWell.map(bullet)))
 
   return parts.join('\n\n')
 }

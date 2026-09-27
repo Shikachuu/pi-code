@@ -6,10 +6,12 @@ import { Type } from 'typebox'
 
 import { formatAnswers, interview, type Question } from '../ask-user/interview.ts'
 import { reviewDocument, showDocument } from '../ask-user/review.ts'
+import { registerVerifyDocRenderer, runVerification } from '../verification/index.ts'
 import { memoryBlock } from './memory.ts'
 import {
   implementPrompt,
   planPrompt,
+  readSection,
   type ResearchReport,
   renderResearch,
   replaceSection,
@@ -28,6 +30,7 @@ import {
   researchFiles,
   resolveFeature,
   setPhase,
+  setVerifyRounds,
   splitArgs,
   writeDoc,
   writeResearch,
@@ -55,7 +58,11 @@ interface Handoff {
 }
 
 const SESSION_ENTRY = 'sdd-session'
-const SESSION_TOOLS: Record<SessionKind, string> = { plan: 'sdd_save_plan', implement: 'sdd_complete' }
+const SESSION_TOOLS: Record<SessionKind, string[]> = {
+  plan: ['sdd_save_plan'],
+  implement: ['sdd_complete', 'sdd_verify'],
+}
+const VERIFY_ROUND_CAP = 3
 // newSession() replaces the extension instance, so the old closure cannot set the new session's model.
 // The command leaves the handoff here and the new instance picks it up in session_start.
 const HANDOFF = Symbol.for('ultimate-harness/sdd-handoff')
@@ -114,6 +121,7 @@ export interface SddOptions {
 
 export default function (pi: ExtensionAPI, options: SddOptions = {}) {
   const run = options.run
+  registerVerifyDocRenderer(pi)
 
   async function spec(ctx: ExtensionCommandContext, request: string): Promise<string | undefined> {
     const memory = memoryBlock(ctx.cwd)
@@ -271,7 +279,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
     })
   }
 
-  const all: FeatureState['phase'][] = ['spec', 'discovered', 'planned', 'implementing', 'done']
+  const all: FeatureState['phase'][] = ['spec', 'discovered', 'planned', 'implementing', 'verifying', 'done']
 
   command('spec', 'Interview and write a feature spec, then run discovery', async (args, ctx) => {
     if (!args.trim()) return void ctx.ui.notify('Usage: /spec <what you want to change>', 'warning')
@@ -326,6 +334,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       discovered: '/plan',
       planned: '/implement',
       implementing: '/implement',
+      verifying: '/implement',
       done: '-',
     }
     const features = listFeatures(ctx.cwd)
@@ -338,7 +347,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
   })
 
   pi.registerTool({
-    name: SESSION_TOOLS.plan,
+    name: SESSION_TOOLS.plan[0]!,
     label: 'Save plan',
     description:
       'Validate an SDD implementation plan, show it to the user for review, and save it as plan.md when accepted.',
@@ -373,10 +382,10 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
   })
 
   pi.registerTool({
-    name: SESSION_TOOLS.implement,
+    name: SESSION_TOOLS.implement[0]!,
     label: 'Complete implementation',
     description:
-      'Record acceptance-criteria results for an SDD feature in its plan.md and close the feature when all pass.',
+      'Record acceptance-criteria results for an SDD feature in its plan.md. The feature closes only when every criterion passes and verification has approved.',
     promptSnippet: "Record SDD acceptance results in the feature's plan.md",
     parameters: Type.Object({
       feature: Type.String({ description: 'Feature slug' }),
@@ -397,22 +406,97 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       const lines = params.results.map(
         (r) => `- [${r.status === 'pass' ? 'x' : ' '}] ${r.criterion}: ${r.status} - ${r.evidence}`,
       )
-      writeDoc(ctx.cwd, state.slug, 'plan.md', replaceSection(planDoc, 'Results', lines.join('\n')))
+      const updated = replaceSection(planDoc, 'Results', lines.join('\n'))
+      writeDoc(ctx.cwd, state.slug, 'plan.md', updated)
       const failed = params.results.filter((r) => r.status === 'fail').length
-      setPhase(ctx.cwd, state.slug, failed ? 'implementing' : 'done')
+      if (failed) {
+        setPhase(ctx.cwd, state.slug, 'implementing')
+        return text(
+          `${failed} criteria failed; the feature stays in implementing. Fix them, re-run the validation pipeline, then call sdd_verify again.`,
+        )
+      }
+      const recorded = /- verdict: (APPROVE|REQUEST CHANGES)/.exec(readSection(updated, 'Verification') ?? '')
+      if (recorded?.[1] !== 'APPROVE') {
+        if (recorded)
+          return text(
+            `Verification recorded REQUEST CHANGES. Fix every critical issue and must-kill item in the Verification section of the plan, then call sdd_verify again. The feature stays in ${state.phase}.`,
+          )
+        return text(
+          `All criteria pass, but verification has not approved yet. Call sdd_verify with feature "${state.slug}" first; sdd_complete will not close the feature until it approves.`,
+        )
+      }
+      setPhase(ctx.cwd, state.slug, 'done')
+      setVerifyRounds(ctx.cwd, state.slug, 0)
+      return text('All criteria pass and verification approved; the feature is done.')
+    },
+  })
+
+  pi.registerTool({
+    name: SESSION_TOOLS.implement[1]!,
+    label: 'Run review gate',
+    description:
+      'Run the three read-only verification agents over the current branch scope, record the verdict in the feature plan.md, and return the fixes to make on REQUEST CHANGES.',
+    promptSnippet: 'Run the SDD review gate over the current changes',
+    parameters: Type.Object({ feature: Type.String({ description: 'Feature slug' }) }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }], details: {} })
+      const state = readState(ctx.cwd, params.feature)
+      if (!state) return text(`Unknown feature "${params.feature}"`)
+      const planDoc = readDoc(ctx.cwd, state.slug, 'plan.md')
+      if (!planDoc) return text(`Feature "${state.slug}" has no plan.md`)
+      const record = (verdict: string, body: string) =>
+        writeDoc(
+          ctx.cwd,
+          state.slug,
+          'plan.md',
+          replaceSection(planDoc, 'Verification', `- verdict: ${verdict}\n\n${body}`),
+        )
+
+      let result
+      try {
+        result = await runVerification(pi, ctx, { run })
+      } catch (error) {
+        return text(`Verification did not finish: ${(error as Error).message}`)
+      }
+
+      if (!result) {
+        record('APPROVE', 'No changed files in the verify scope, so there was nothing to review.')
+        setPhase(ctx.cwd, state.slug, 'verifying')
+        setVerifyRounds(ctx.cwd, state.slug, 0)
+        return text('No changed files in the verify scope. Recorded APPROVE. Now call sdd_complete.')
+      }
+
+      record(result.verdict, result.markdown)
+      if (result.verdict === 'APPROVE') {
+        setPhase(ctx.cwd, state.slug, 'verifying')
+        setVerifyRounds(ctx.cwd, state.slug, 0)
+        return text('Verification approved. Now call sdd_complete with one result per acceptance criterion.')
+      }
+
+      setPhase(ctx.cwd, state.slug, 'implementing')
+      const rounds = (state.verifyRounds ?? 0) + 1
+      setVerifyRounds(ctx.cwd, state.slug, rounds)
+      if (rounds >= VERIFY_ROUND_CAP) {
+        const keepGoing = await ctx.ui.confirm(
+          'Verification still requests changes',
+          `sdd_verify has returned REQUEST CHANGES ${rounds} times for ${state.slug}. Keep fixing and re-running the gate?`,
+        )
+        if (!keepGoing)
+          return text(
+            `Stopped after ${rounds} REQUEST CHANGES rounds. The feature stays in implementing. Hand the open findings to the user with ask_user and stop.`,
+          )
+      }
       return text(
-        failed
-          ? `${failed} criteria failed; the feature stays in implementing.`
-          : 'All criteria pass; the feature is done.',
+        `Verification: REQUEST CHANGES (round ${rounds}). Fix every critical issue and every must-kill item in the report below, then call sdd_verify again.\n\n${result.markdown}`,
       )
     },
   })
 
   function applySessionTools(kind: SessionKind | undefined) {
-    const own = Object.values(SESSION_TOOLS)
+    const own = Object.values(SESSION_TOOLS).flat()
     const active = pi.getActiveTools()
     const next = active.filter((name) => !own.includes(name))
-    if (kind) next.push(SESSION_TOOLS[kind])
+    if (kind) next.push(...SESSION_TOOLS[kind])
     if (next.length !== active.length || next.some((n, i) => n !== active[i])) pi.setActiveTools(next)
   }
 
@@ -422,8 +506,10 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
     if (pending) {
       pi.appendEntry(SESSION_ENTRY, { kind: pending.kind, slug: pending.slug })
       pi.setSessionName(`${pending.kind}: ${pending.slug}`)
-      if (pending.kind === 'implement' && readState(ctx.cwd, pending.slug))
+      if (pending.kind === 'implement' && readState(ctx.cwd, pending.slug)) {
         setPhase(ctx.cwd, pending.slug, 'implementing')
+        setVerifyRounds(ctx.cwd, pending.slug, 0)
+      }
       const model = pending.model && ctx.modelRegistry.find(pending.model.provider, pending.model.id)
       if (model && !(await pi.setModel(model)))
         ctx.ui.notify(`No auth for ${pending.model?.provider}/${pending.model?.id}; using the current model`, 'warning')
