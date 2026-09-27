@@ -1,49 +1,71 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
-import register, { isProtected } from "../agent/extensions/protected-paths/index.ts";
+import type { ExtensionAPI, ExtensionContext, ToolCallEventResult } from '@earendil-works/pi-coding-agent'
+import { expect, test } from 'vitest'
 
-test("blocks secrets, git internals and dependencies", () => {
-	for (const path of [".env", "./.env", "/abs/repo/.env.local", ".git", ".git/config", "../x/.git/HEAD", "a/node_modules/x.js", "agent/auth.json"]) {
-		assert.ok(isProtected(path), path);
-	}
-});
+import register, { isProtected } from '../agent/extensions/protected-paths/index.ts'
+import { asMock, must } from './helpers.ts'
 
-test("allows ordinary files", () => {
-	for (const path of ["src/env.ts", ".envrc", ".environment", "foo.git/x", "gitignore", "README.md"]) {
-		assert.ok(!isProtected(path), path);
-	}
-});
-
-function load() {
-	let handler: any;
-	const commands: string[] = [];
-	register({
-		on: (event: string, fn: any) => {
-			if (event === "tool_call") handler = fn;
-		},
-		registerCommand: (name: string) => commands.push(name),
-	} as any);
-	const notified: string[] = [];
-	const ctx = (hasUI: boolean) => ({ hasUI, ui: { notify: (msg: string) => notified.push(msg) } });
-	return { handler, commands, notified, ctx };
+interface ToolCallStub {
+  toolName: string
+  input: Record<string, unknown>
 }
 
-test("tool_call handler blocks write and edit on protected paths", async () => {
-	const { handler, commands, notified, ctx } = load();
-	assert.deepEqual(commands, ["protected-paths"]);
+type ToolCallHandler = (event: ToolCallStub, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined>
 
-	const blocked = await handler({ toolName: "write", input: { path: ".env" } }, ctx(true));
-	assert.equal(blocked.block, true);
-	assert.match(blocked.reason, /\.env/);
-	assert.equal(notified.length, 1);
+test('blocks secrets, git internals and dependencies', () => {
+  for (const path of [
+    '.env',
+    './.env',
+    '/abs/repo/.env.local',
+    '.git',
+    '.git/config',
+    '../x/.git/HEAD',
+    'a/node_modules/x.js',
+    'agent/auth.json',
+  ]) {
+    expect({ path, protected: isProtected(path) }).toEqual({ path, protected: true })
+  }
+})
 
-	assert.equal((await handler({ toolName: "edit", input: { path: ".git/config" } }, ctx(false))).block, true);
-	assert.equal(notified.length, 1, "no notify without UI");
-});
+test('allows ordinary files', () => {
+  for (const path of ['src/env.ts', '.envrc', '.environment', 'foo.git/x', 'gitignore', 'README.md']) {
+    expect({ path, protected: isProtected(path) }).toEqual({ path, protected: false })
+  }
+})
 
-test("tool_call handler ignores other tools, safe paths and missing paths", async () => {
-	const { handler, ctx } = load();
-	assert.equal(await handler({ toolName: "read", input: { path: ".env" } }, ctx(false)), undefined);
-	assert.equal(await handler({ toolName: "write", input: { path: "README.md" } }, ctx(false)), undefined);
-	assert.equal(await handler({ toolName: "write", input: {} }, ctx(false)), undefined);
-});
+function load() {
+  let handler: ToolCallHandler | undefined
+  const commands: string[] = []
+  const recorders = {
+    on: (event: string, fn: unknown) => {
+      if (event === 'tool_call') handler = asMock<ToolCallHandler>(fn)
+    },
+    registerCommand: (name: string) => {
+      commands.push(name)
+    },
+  }
+  register(asMock<ExtensionAPI>(recorders))
+  const notified: string[] = []
+  const ctx = (hasUI: boolean) =>
+    asMock<ExtensionContext>({ hasUI, ui: { notify: (msg: string) => notified.push(msg) } })
+  return { call: must(handler, 'tool_call handler'), commands, notified, ctx }
+}
+
+test('tool_call handler blocks write and edit on protected paths', async () => {
+  const { call, commands, notified, ctx } = load()
+  expect(commands).toEqual(['protected-paths'])
+
+  const blocked = await call({ toolName: 'write', input: { path: '.env' } }, ctx(true))
+  expect(blocked?.block).toBe(true)
+  expect(blocked?.reason).toMatch(/\.env/)
+  expect(notified.length).toBe(1)
+
+  expect((await call({ toolName: 'edit', input: { path: '.git/config' } }, ctx(false)))?.block).toBe(true)
+  expect(notified.length, 'no notify without UI').toBe(1)
+})
+
+test('tool_call handler ignores other tools, safe paths and missing paths', async () => {
+  const { call, ctx } = load()
+  expect(await call({ toolName: 'read', input: { path: '.env' } }, ctx(false))).toBeUndefined()
+  expect(await call({ toolName: 'write', input: { path: 'README.md' } }, ctx(false))).toBeUndefined()
+  expect(await call({ toolName: 'write', input: {} }, ctx(false))).toBeUndefined()
+})
