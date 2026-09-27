@@ -11,6 +11,11 @@
       "modelInvocable": true
     },
     {
+      "name": "mise",
+      "path": "<REPO>/agent/skills/mise/SKILL.md",
+      "modelInvocable": true
+    },
+    {
       "name": "tofu-dev",
       "path": "<REPO>/agent/skills/tofu-dev/SKILL.md",
       "modelInvocable": true

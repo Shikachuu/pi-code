@@ -94,6 +94,7 @@ Project-specific instructions and guidelines:
 - Put one idea in each sentence. Cut filler, hedging and adverbs.
 - Don't use colons as a mid-sentence connector. Use sentence case for headings. Use bold sparingly.
 - These bullets are a summary. For a full editing pass on a document, load the unslop skill. It has the complete ruleset with stable rule ids.
+- For mise config, tasks, or tool pins, load the mise skill first.
 
 ## Autonomy
 
@@ -142,6 +143,11 @@ When a skill file references a relative path, resolve it against the skill direc
     <name>commit-message</name>
     <description>Write a git commit message for staged changes. Use when the user asks to commit, write a commit message, or summarize staged changes for git.</description>
     <location><REPO>/agent/skills/commit-message/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>mise</name>
+    <description>Use when creating, editing, reviewing, or debugging mise (mise-en-place) config, tasks, or tool versions - mise.toml, tool pins, tasks, [env], the lockfile, and trust. Enforces one opinionated mise ruleset so every repo pins and runs its tools the same way. Activate when the user says &quot;set up mise for this repo&quot;, &quot;add a tool to mise.toml&quot;, &quot;pin node or python with mise&quot;, &quot;what&apos;s the mise registry name for X&quot;, &quot;write a mise task&quot;, &quot;move this script into mise-tasks&quot;, &quot;set env vars in mise&quot;, &quot;load a .env file with mise&quot;, &quot;turn on the mise lockfile&quot;, &quot;mise isn&apos;t picking up my config&quot;, &quot;mise install or mise run is failing&quot;, or &quot;migrate this repo from asdf or .tool-versions to mise&quot;, or edits mise.toml, mise.local.toml, mise.&lt;env&gt;.toml, mise.lock, .config/mise/config.toml, or files under mise-tasks/ or .mise/tasks/. Do not use for Homebrew or apt installs, Dockerfile base images, GitHub Actions workflow YAML even when the job installs tools with mise, or npm, pip and cargo dependency installs.</description>
+    <location><REPO>/agent/skills/mise/SKILL.md</location>
   </skill>
   <skill>
     <name>tofu-dev</name>
