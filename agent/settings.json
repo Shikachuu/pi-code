@@ -11,8 +11,8 @@
     "../node_modules/pi-web-access"
   ],
   "theme": "dark",
-  "defaultProvider": "openrouter",
-  "defaultModel": "moonshotai/kimi-k2.6",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4.1-flash",
   "terminal": {
     "showTerminalProgress": true
   }
