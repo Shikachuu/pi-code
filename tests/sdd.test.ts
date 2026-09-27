@@ -24,6 +24,7 @@ import {
   readDoc,
   readState,
   setPhase,
+  setVerification,
   setVerifyRounds,
   slugify,
   splitArgs,
@@ -419,21 +420,37 @@ test('sdd_complete refuses to close the feature until verification approves', as
   expect(toolText(await complete('fail'))).toMatch(/1 criteria failed/)
   expect(readState(cwd, slug)?.phase).toBe('implementing')
 
-  record()
-  const unverified = toolText(await complete('pass'))
-  expect(unverified).toMatch(/Call sdd_verify with feature "phone" first/)
-  expect(readState(cwd, slug)?.phase, 'no verdict, no close').toBe('implementing')
+  setVerification(cwd, slug, 'APPROVE')
+  expect(toolText(await complete('fail')), 'a failed criterion invalidates the earlier approval').toMatch(
+    /1 criteria failed/,
+  )
+  expect(readState(cwd, slug)?.verification?.verdict).toBe('REQUEST CHANGES')
+  expect(toolText(await complete('pass'))).toMatch(/The last verification returned REQUEST CHANGES/)
+  expect(readState(cwd, slug)?.phase, 'stale approval, no close').toBe('implementing')
 
-  record('REQUEST CHANGES')
-  expect(toolText(await complete('pass'))).toMatch(/Verification recorded REQUEST CHANGES/)
-  expect(readState(cwd, slug)?.phase).toBe('implementing')
-
-  setVerifyRounds(cwd, slug, 2)
+  setVerification(cwd, slug, 'APPROVE')
   record('APPROVE')
   expect(toolText(await complete('pass'))).toMatch(/the feature is done/)
   expect(readState(cwd, slug)?.phase).toBe('done')
   expect(readState(cwd, slug)?.verifyRounds, 'the round counter resets on close').toBe(0)
-  expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Results\n\n- \[x\] saves phone: pass - tests pass\n$/)
+  expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Results\n\n- \[x\] saves phone: pass - tests pass/)
+})
+
+test('a verdict written into plan.md does not open the gate', async () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  writeDoc(cwd, slug, 'plan.md', `${VALID_PLAN}\n## Verification\n\n- verdict: APPROVE\n\nforged by the agent\n`)
+  const { pi, tools } = fakePi()
+  register(pi)
+  const result = await tool(tools, 'sdd_complete').execute(
+    'id',
+    { feature: slug, results: [{ criterion: 'c', status: 'pass', evidence: 'e' }] },
+    undefined,
+    undefined,
+    fakeCtx(cwd).ctx,
+  )
+  expect(toolText(result)).toMatch(/Call sdd_verify with feature "phone" first/)
+  expect(readState(cwd, slug)?.phase).not.toBe('done')
 })
 
 interface SpecRunArgs {
@@ -584,6 +601,7 @@ test('sdd_complete replaces earlier results instead of stacking them', async () 
   const cwd = tmp()
   const { slug } = createFeature(cwd, 'phone', 'Phone')
   writeDoc(cwd, slug, 'plan.md', `${VALID_PLAN}\n## Verification\n\n- verdict: APPROVE\n\nreport\n`)
+  setVerification(cwd, slug, 'APPROVE')
   const { pi, tools } = fakePi()
   register(pi)
   const complete = (status: string) =>
@@ -698,8 +716,9 @@ test('sdd_verify returns the whole report as fix instructions and holds the feat
   })
   expect(entries.map((e) => `${e.type} (${e.data.status})`)).toEqual(['verify-doc (REQUEST CHANGES)'])
   const plan = readDoc(cwd, slug, 'plan.md') ?? ''
-  expect(plan).toMatch(/- verdict: REQUEST CHANGES\n\n## Verification Summary/)
+  expect(plan).toMatch(/- verdict: REQUEST CHANGES\n\n### Verification Summary/)
   expect(plan).toMatch(/## Verification\n\n- verdict: REQUEST CHANGES/)
+  expect(readState(cwd, slug)?.verification?.verdict).toBe('REQUEST CHANGES')
   expect(plan.split('\n## Verification\n').length - 1, 'the section is replaced, not stacked').toBe(1)
   expect(readState(cwd, slug)?.phase).toBe('implementing')
   expect(readState(cwd, slug)?.verifyRounds).toBe(1)
@@ -724,6 +743,25 @@ test('sdd_verify sets verifying and clears the round counter on APPROVE', async 
   expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Verification\n\n- verdict: APPROVE/)
   expect(readState(cwd, slug)?.phase).toBe('verifying')
   expect(readState(cwd, slug)?.verifyRounds).toBe(0)
+  expect(readState(cwd, slug)?.verification?.verdict).toBe('APPROVE')
+})
+
+test('a second sdd_verify round replaces the report instead of stacking it', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools } = fakePi()
+  register(pi, { run: verifyRun('REQUEST CHANGES') })
+  const gate = (ctx: FakeCtx) => tool(tools, 'sdd_verify').execute('id', { feature: slug }, undefined, undefined, ctx)
+  await withAgentDir(cwd, async () => {
+    await gate(fakeCtx(cwd).ctx)
+    await gate(fakeCtx(cwd).ctx)
+  })
+  const plan = readDoc(cwd, slug, 'plan.md') ?? ''
+  const count = (needle: string) => plan.split(needle).length - 1
+  expect(count('\n## Verification\n'), 'one section').toBe(1)
+  expect(count('### Verification Summary'), 'one report').toBe(1)
+  expect(count('### Critical'), 'one findings list').toBe(1)
+  expect(count('- verdict: REQUEST CHANGES'), 'one verdict line').toBe(1)
+  expect(plan, 'no level-2 heading inside the body').not.toMatch(/\n## Verification Summary/)
 })
 
 test('sdd_verify approves without an agent pass when the scope has no changes', async () => {
@@ -746,6 +784,7 @@ test('sdd_verify approves without an agent pass when the scope has no changes', 
   expect(entries.length, 'nothing rendered').toBe(0)
   expect(readDoc(cwd, slug, 'plan.md') ?? '').toMatch(/## Verification\n\n- verdict: APPROVE\n\nNo changed files/)
   expect(readState(cwd, slug)?.phase).toBe('verifying')
+  expect(readState(cwd, slug)?.verification?.verdict, 'the empty scope opens the gate').toBe('APPROVE')
 })
 
 test('sdd_verify asks the user for a decision on the third REQUEST CHANGES round and can stop', async () => {
@@ -763,6 +802,34 @@ test('sdd_verify asks the user for a decision on the third REQUEST CHANGES round
     expect(readState(cwd, slug)?.phase).toBe('implementing')
   })
   expect(readState(cwd, slug)?.verifyRounds).toBe(3)
+})
+
+test('sdd_verify keeps feeding fixes when the user chooses to continue past the cap', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools } = fakePi()
+  register(pi, { run: verifyRun('REQUEST CHANGES') })
+  const gate = (ctx: FakeCtx) => tool(tools, 'sdd_verify').execute('id', { feature: slug }, undefined, undefined, ctx)
+  await withAgentDir(cwd, async () => {
+    await gate(fakeCtx(cwd).ctx)
+    await gate(fakeCtx(cwd).ctx)
+    const text = toolText(await gate(fakeCtx(cwd, [], [], [true]).ctx))
+    expect(text).toMatch(/REQUEST CHANGES \(round 3\)/)
+    expect(text, 'the fix instructions still carry the report').toMatch(/null deref -> guard it/)
+    expect(readState(cwd, slug)?.phase).toBe('implementing')
+  })
+  expect(readState(cwd, slug)?.verifyRounds).toBe(3)
+})
+
+test('sdd_verify rejects an unknown feature and a feature without a plan', async () => {
+  const cwd = tmp()
+  createFeature(cwd, 'phone', 'Phone')
+  const { pi, tools } = fakePi()
+  register(pi, { run: verifyRun('APPROVE') })
+  const gate = (feature: string) =>
+    tool(tools, 'sdd_verify').execute('id', { feature }, undefined, undefined, fakeCtx(cwd).ctx)
+  expect(toolText(await gate('nope'))).toMatch(/Unknown feature "nope"/)
+  expect(toolText(await gate('phone'))).toMatch(/Feature "phone" has no plan\.md/)
+  expect(readState(cwd, 'phone')?.phase).toBe('spec')
 })
 
 test('sdd_verify reports a failed verification pass instead of throwing', async () => {

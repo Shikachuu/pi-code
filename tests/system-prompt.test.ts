@@ -1,11 +1,12 @@
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { expect, test } from 'vitest'
+import { afterAll, expect, test } from 'vitest'
 
 import { AGENT_DIR, isolate, matchSnapshot, normalize } from './helpers.ts'
 
-const { cwd } = isolate()
+const { cwd, restore } = isolate()
+afterAll(restore)
 const { createAgentSession, SessionManager } = await import('@earendil-works/pi-coding-agent')
 const piPackageDir = dirname(dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent'))))
 

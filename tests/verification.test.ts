@@ -114,6 +114,41 @@ test('falls back to the working tree when there is no main or master branch', ()
   expect(scope.notes.length > 0).toBe(true)
 })
 
+test('an invalid target is rejected before any scope resolution', () => {
+  const cwd = initRepo()
+  expect(() => resolveScope(cwd, '-x')).toThrow(/invalid target "-x"/)
+  expect(() => resolveScope(cwd, 'no-such-ref')).toThrow(/unknown ref or path "no-such-ref"/)
+})
+
+test('detectBase falls back to master and treats the base branch itself as the default scope', () => {
+  const master = tmp()
+  git(master, ['init', '-b', 'master'])
+  git(master, ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init'])
+  git(master, ['checkout', '-b', 'feature'])
+  commitFile(master, 'a.ts', 'committed\n', 'add a')
+  writeFileSync(join(master, 'a.ts'), 'committed\nmore\n')
+  const scope = resolveScope(master, undefined)
+  expect(scope.kind).toBe('default')
+  expect(scope.base).toBe('master')
+  expect(scope.files).toEqual(['a.ts'])
+  expect(scope.commands[0]).toMatch(/^git diff master\.\.\.HEAD$/)
+
+  const main = initRepo()
+  commitFile(main, 'a.ts', 'committed\n', 'add a')
+  writeFileSync(join(main, 'a.ts'), 'committed\nmore\n')
+  expect(resolveScope(main, 'main').kind, 'naming the base returns the default scope').toBe('default')
+})
+
+test('an invalid range falls back to the working tree with a note instead of reviewing a wrong scope', () => {
+  const cwd = initRepo()
+  writeFileSync(join(cwd, 'a.ts'), 'new\n')
+  const scope = resolveScope(cwd, 'bad..ref')
+  expect(scope.kind).toBe('fallback')
+  expect(scope.files).toEqual(['a.ts'])
+  expect(scope.notes.join('\n')).toMatch(/unknown ref "bad" in range "bad..ref"/)
+  expect(scope.commands).toEqual(['git diff HEAD', 'git status --short'])
+})
+
 test('isLarge flags scopes over the file or line thresholds', () => {
   expect(isLarge({ files: 5, insertions: 10, deletions: 10 })).toBe(false)
   expect(isLarge({ files: 101, insertions: 0, deletions: 0 })).toBe(true)

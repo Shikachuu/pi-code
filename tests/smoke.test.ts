@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
-import { expect, test } from 'vitest'
+import { afterAll, expect, test } from 'vitest'
 
 import { AGENT_DIR, REPO, asMock, isolate, matchSnapshot, must, normalize } from './helpers.ts'
 
-const { cwd } = isolate()
+const { cwd, restore } = isolate()
+afterAll(restore)
 
 interface RpcCommandInfo {
   name: string

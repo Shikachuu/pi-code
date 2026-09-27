@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# mise config gate: deprecations -> what loads -> tasks -> lockfile -> gitignore -> doctor.
 set -euo pipefail
 shopt -s nullglob
 
@@ -46,6 +47,8 @@ fi
 # mise accepts most of these and only warns, so they look correct until removed.
 section "Deprecated forms"
 dep_hit=0
+# Comments are stripped first so a config that quotes these rules in a comment
+# does not trip the grep. sed keeps the line count, so line numbers stay right.
 check_dep() {
     local pattern=$1 msg=$2 found=0 hits c
     for c in "${CONFIGS[@]}"; do
@@ -119,6 +122,7 @@ for d in mise-tasks .mise-tasks mise/tasks .mise/tasks .config/mise/tasks; do
         case "${f##*/}" in .*|*.md|*.txt|LICENSE*) continue ;; esac
         case "$f" in */lib/*|*/_lib/*|*/.*/*) continue ;; esac
         [ -x "$f" ] && continue
+        # Only a file that means to be a task: docs and sourced helpers have no shebang.
         head -c 2 "$f" 2>/dev/null | grep -q '#!' \
             && fail "$f has a shebang but is not executable, so mise will not discover it (chmod +x)"
     done < <(find "$d" -type f -print0 2>/dev/null)
@@ -164,6 +168,7 @@ else
     SUMMARY+=("gitignore: skipped")
 fi
 
+# Warn-only: doctor reports machine facts that are not this repo's problem.
 section "Trust and doctor"
 mise trust --show || true
 mise doctor >/dev/null 2>&1 || log_warn "mise doctor reported problems; run it directly for detail"

@@ -5,10 +5,15 @@ import { CONFIG_DIR_NAME } from '@earendil-works/pi-coding-agent'
 
 export type Phase = 'spec' | 'discovered' | 'planned' | 'implementing' | 'verifying' | 'done'
 
+export type Verdict = 'APPROVE' | 'REQUEST CHANGES'
+
 export interface FeatureState {
   slug: string
   title: string
   phase: Phase
+  // The gate reads the verdict from here, never from plan.md: the implementing
+  // agent can edit the plan, so a written verdict proves nothing.
+  verification?: { verdict: Verdict; at: string }
   verifyRounds?: number
   createdAt: string
   updatedAt: string
@@ -77,6 +82,12 @@ export function setVerifyRounds(cwd: string, slug: string, rounds: number, now =
   const state = readState(cwd, slug)
   if (!state) throw new Error(`Unknown feature "${slug}"`)
   return writeState(cwd, { ...state, verifyRounds: rounds, updatedAt: now.toISOString() })
+}
+
+export function setVerification(cwd: string, slug: string, verdict: Verdict, now = new Date()): FeatureState {
+  const state = readState(cwd, slug)
+  if (!state) throw new Error(`Unknown feature "${slug}"`)
+  return writeState(cwd, { ...state, verification: { verdict, at: now.toISOString() }, updatedAt: now.toISOString() })
 }
 
 export function listFeatures(cwd: string): FeatureState[] {

@@ -1,8 +1,9 @@
-import { expect, test } from 'vitest'
+import { afterAll, expect, test } from 'vitest'
 
 import { AGENT_DIR, isolate, matchSnapshot, normalize } from './helpers.ts'
 
-const { cwd } = isolate()
+const { cwd, restore } = isolate()
+afterAll(restore)
 const { DefaultResourceLoader } = await import('@earendil-works/pi-coding-agent')
 
 test('agent dir loads without diagnostics and matches snapshot', async () => {

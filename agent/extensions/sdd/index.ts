@@ -9,9 +9,9 @@ import { reviewDocument, showDocument } from '../ask-user/review.ts'
 import { registerVerifyDocRenderer, runVerification } from '../verification/index.ts'
 import { memoryBlock } from './memory.ts'
 import {
+  demoteHeadings,
   implementPrompt,
   planPrompt,
-  readSection,
   type ResearchReport,
   renderResearch,
   replaceSection,
@@ -30,6 +30,7 @@ import {
   researchFiles,
   resolveFeature,
   setPhase,
+  setVerification,
   setVerifyRounds,
   splitArgs,
   writeDoc,
@@ -411,15 +412,17 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       const failed = params.results.filter((r) => r.status === 'fail').length
       if (failed) {
         setPhase(ctx.cwd, state.slug, 'implementing')
+        // An earlier APPROVE covered the code as it was, so the fix must be re-verified.
+        setVerification(ctx.cwd, state.slug, 'REQUEST CHANGES')
         return text(
           `${failed} criteria failed; the feature stays in implementing. Fix them, re-run the validation pipeline, then call sdd_verify again.`,
         )
       }
-      const recorded = /- verdict: (APPROVE|REQUEST CHANGES)/.exec(readSection(updated, 'Verification') ?? '')
-      if (recorded?.[1] !== 'APPROVE') {
-        if (recorded)
+      const verdict = readState(ctx.cwd, state.slug)?.verification?.verdict
+      if (verdict !== 'APPROVE') {
+        if (verdict)
           return text(
-            `Verification recorded REQUEST CHANGES. Fix every critical issue and must-kill item in the Verification section of the plan, then call sdd_verify again. The feature stays in ${state.phase}.`,
+            `The last verification returned REQUEST CHANGES. Fix every critical issue and must-kill item in the Verification section of the plan, then call sdd_verify again. The feature stays in ${state.phase}.`,
           )
         return text(
           `All criteria pass, but verification has not approved yet. Call sdd_verify with feature "${state.slug}" first; sdd_complete will not close the feature until it approves.`,
@@ -444,13 +447,15 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       if (!state) return text(`Unknown feature "${params.feature}"`)
       const planDoc = readDoc(ctx.cwd, state.slug, 'plan.md')
       if (!planDoc) return text(`Feature "${state.slug}" has no plan.md`)
-      const record = (verdict: string, body: string) =>
+      const record = (verdict: 'APPROVE' | 'REQUEST CHANGES', body: string) => {
+        setVerification(ctx.cwd, state.slug, verdict)
         writeDoc(
           ctx.cwd,
           state.slug,
           'plan.md',
-          replaceSection(planDoc, 'Verification', `- verdict: ${verdict}\n\n${body}`),
+          replaceSection(planDoc, 'Verification', `- verdict: ${verdict}\n\n${demoteHeadings(body)}`),
         )
+      }
 
       let result
       try {

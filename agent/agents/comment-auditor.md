@@ -22,6 +22,8 @@ If no scope is given, default to the current branch against `main`:
 
 Every finding names a real `file:line` inside the scope and quotes the comment. Invent nothing. If you could not read part of the scope, list it under `skipped`.
 
+`agent/skills/**` is out of scope. Those files are verbatim copies of `../dotfiles/ai/.claude/skills/` (the port-mise-skill spec requires it), so deleting a comment there breaks the copy. Report that whole tree under `skipped` and do not judge its comments.
+
 ## Keep list
 
 These are the only reasons a comment survives. When you are not sure a clause applies, the comment is `mustKill`.

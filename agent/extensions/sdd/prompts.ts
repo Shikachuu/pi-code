@@ -63,6 +63,12 @@ export function readSection(markdown: string, heading: string): string | undefin
   )
 }
 
+// A section body must not carry its own `##` heading, or sectionBounds reads it
+// as the end of the section it is being written into.
+export function demoteHeadings(markdown: string): string {
+  return markdown.replace(/^(#{1,5})\s/gm, (_line, hashes: string) => `${hashes}# `)
+}
+
 export function replaceSection(markdown: string, heading: string, body: string): string {
   const lines = markdown.trimEnd().split('\n')
   const bounds = sectionBounds(lines, heading)

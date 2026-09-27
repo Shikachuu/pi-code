@@ -9,15 +9,25 @@ export const AGENT_DIR = join(REPO, 'agent')
 
 // Pi reads ~/.agents/skills and walks context files from / to cwd, so tests pin both
 // to empty temp dirs to see only what agent/ provides.
-export function isolate(): { home: string; cwd: string } {
+export function isolate(): { home: string; cwd: string; restore(): void } {
   const root = mkdtempSync(join(tmpdir(), 'pi-harness-'))
   const home = join(root, 'home')
   const cwd = join(root, 'cwd')
   mkdirSync(home)
   mkdirSync(cwd)
+  const previous = { home: process.env.HOME, offline: process.env.PI_OFFLINE }
   process.env.HOME = home
   process.env.PI_OFFLINE = '1'
-  return { home, cwd }
+  const restore = () => {
+    for (const [key, value] of [
+      ['HOME', previous.home],
+      ['PI_OFFLINE', previous.offline],
+    ] as [string, string | undefined][]) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+  return { home, cwd, restore }
 }
 
 export function normalize(text: string, cwd: string): string {
