@@ -28,11 +28,11 @@ MINOR_MATTERS=" python go ruby rust elixir erlang zig dotnet jq perl swift "
 suggest_pin() {
     local v=$1 name=$2 major=${1%%.*}
     if [[ $major =~ ^[0-9]{4}$ ]] && (( major >= 2000 )); then
-        printf '%s' "$v"                       # calver: a major is a whole year
+        printf '%s' "$v"
     elif [ "$major" = "0" ]; then
         printf '%s' "${v%.*}"                  # 0.x: every minor is a breaking change
     elif [[ $MINOR_MATTERS == *" $name "* ]]; then
-        printf '%s' "${v%.*}"                  # major.minor
+        printf '%s' "${v%.*}"
     else
         printf '%s' "$major"
     fi
@@ -40,7 +40,6 @@ suggest_pin() {
 
 canonical_name() {
     local name=$1 specs=$2 row
-    # Already canonical?
     if printf '%s\n' "$CANON" | awk -v n="$name" '$1==n{found=1} END{exit !found}'; then
         printf '%s' "$name"; return
     fi
@@ -88,7 +87,6 @@ lookup_one() {
     done
     [ -n "$best" ] || best=$first
 
-    # Resolve against the backend we are about to recommend, not the default.
     if [ "$best" = "$first" ]; then
         bver=$(mise latest "$canon" 2>/dev/null || echo "")
     else

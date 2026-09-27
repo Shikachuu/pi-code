@@ -1,7 +1,4 @@
 {
-  // Curated, non-recommended-strict setup: the default correctness category
-  // plus an explicit, hand-picked rule list. Every rule below is either a
-  // true-positive guard or a repo convention we want to enforce.
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": {
     "correctness": "error"
@@ -9,17 +6,11 @@
   // `plugins` overwrites the default plugin set, so list every plugin we use.
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest", "node"],
   "rules": {
-    // Enforce that the tests really run on vitest after the node:test migration.
     "vitest/no-import-node-test": "error",
-    // Keep a single import statement per module.
     "import/no-duplicates": "error",
-    // Side-effect imports are intentional in extensions (registering a tool).
     "import/no-unassigned-import": "error",
-    // No explicit `any`: the tests were retyped with real shapes, keep it that way.
     "typescript/no-explicit-any": "error",
-    // Dead bindings and unused parameters should not accumulate.
     "typescript/no-unused-vars": "error"
   },
-  // Documented in the docs as strongly recommended; node_modules is matched implicitly too.
   "ignorePatterns": ["node_modules", "dist", ".pi"]
 }

@@ -28,14 +28,11 @@ export function readJson<T = unknown>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T
 }
 
-// Narrow a value that a preceding setup step guarantees exists, without an assertion.
 export function must<T>(value: T | null | undefined, what: string): T {
   if (value === null || value === undefined) throw new Error(`missing ${what}`)
   return value
 }
 
-// Test doubles implement only the members an extension touches. This cast
-// bridges a typed partial mock to the full SDK interface at the boundary.
 export function asMock<T>(value: unknown): T {
   return value as unknown as T
 }

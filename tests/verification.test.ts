@@ -39,8 +39,6 @@ function commitFile(cwd: string, path: string, content: string, message: string)
   git(cwd, ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '-m', message])
 }
 
-// --- scope.ts ---
-
 test('resolveScope throws on a non-git directory', () => {
   const cwd = tmp()
   expect(() => resolveScope(cwd, undefined)).toThrow(/not a git repository/)
@@ -138,8 +136,6 @@ test('formatScope renders target, files and commands', () => {
   expect(text).toMatch(/git diff -- a\.ts/)
 })
 
-// --- workflow.ts ---
-
 test('verify workflow script parses', () => {
   expect(parseWorkflowScript(VERIFY_SCRIPT).meta.name).toBe('verify')
 })
@@ -202,8 +198,6 @@ test('verify runs exactly three agent calls with identical scope, tier medium an
     JSON.stringify({ codeReviewer: null, testEngineer: null, commentAuditor: null }),
   )
 })
-
-// --- report.ts ---
 
 function reports(overrides: Partial<Reports> = {}): Reports {
   return {
@@ -326,8 +320,6 @@ test('renderSummary reports a missing agent by name', () => {
   expect(md).toMatch(/comment-auditor did not return a report/)
 })
 
-// --- agent definitions ---
-
 test('all three agentTypes are registered, read-only, and use the expected thinking level', () => {
   const registry = loadAgentRegistry('', {
     projectDir: '/does/not/exist',
@@ -342,8 +334,6 @@ test('all three agentTypes are registered, read-only, and use the expected think
     expect(def.thinking).toBe(thinking)
   }
 })
-
-// --- index.ts command ---
 
 interface FakeCtx {
   cwd: string
