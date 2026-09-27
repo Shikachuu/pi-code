@@ -2,7 +2,7 @@ import { stripVTControlCharacters as stripAnsi } from 'node:util'
 
 import type { ExtensionAPI, ExtensionContext, Theme } from '@earendil-works/pi-coding-agent'
 import { initTheme } from '@earendil-works/pi-coding-agent'
-import type { TUI } from '@earendil-works/pi-tui'
+import type { TUI, TuiMouseEvent } from '@earendil-works/pi-tui'
 import { visibleWidth } from '@earendil-works/pi-tui'
 import { expect, test } from 'vitest'
 
@@ -12,10 +12,13 @@ import {
   type Answers,
   createInterview,
   formatAnswers,
+  frameLines,
   initialState,
   layoutTabs,
+  padLine,
   type Question,
   reduce,
+  scrollbarColumn,
   type State,
   validateQuestions,
 } from '../agent/extensions/ask-user/interview.ts'
@@ -185,9 +188,28 @@ const plainTheme = asMock<Theme>({
 })
 const fakeTui = () => asMock<TUI>({ requestRender: () => {}, terminal: { rows: 30, columns: 80 } })
 
+const wheelEvent = (wheelDelta: number): TuiMouseEvent => ({
+  type: 'wheel',
+  button: 'none',
+  x: 0,
+  y: 0,
+  screenX: 0,
+  screenY: 0,
+  width: 40,
+  height: 30,
+  shift: false,
+  alt: false,
+  ctrl: false,
+  wheelDelta,
+})
+
+const inset = (line: string): string => line.slice(1, -1)
+
 interface Renderable {
   render(width: number): string[]
   handleInput(data: string): void
+  handleMouse?(event: TuiMouseEvent): unknown
+  invalidate?(): void
 }
 
 test('interview component renders tabs, options and the editor, and returns answers', () => {
@@ -197,7 +219,7 @@ test('interview component renders tabs, options and the editor, and returns answ
   })
   const first = ui.render(60).join('\n')
   expect(first).toMatch(/□ Auth .* □ Store .* Submit/)
-  expect(first).toMatch(/> 1\. A\n/)
+  expect(first).toMatch(/> 1\. A\b/)
   expect(first).toMatch(/3\. Type something\./)
   ui.handleInput('\r')
   expect(ui.state.tab).toBe(1)
@@ -300,8 +322,8 @@ test('long headers are cut to 12 characters and tabs never split across lines', 
   const ui = createInterview(fakeTui(), plainTheme, qs, () => {})
   const lines = ui.render(40)
   expect(lines.filter((l) => visibleWidth(l) > 40)).toEqual([])
-  const tabLines = lines.slice(0, lines.indexOf('')).map(stripAnsi)
-  const labels = tabLines.join(' ').match(/□ [^□]+?(?= {2}|$| Submit)/g) ?? []
+  const tabLines = lines.map(stripAnsi).filter((l) => /[□■]|Submit/.test(l))
+  const labels = tabLines.join(' ').match(/□ [^□■]+?(?= {2}| ?│| Submit)/g) ?? []
   expect(labels).toHaveLength(4)
   for (const label of labels) expect(label.trim()).toBe('□ Storage lay…')
 })
@@ -333,6 +355,156 @@ test('review overlay wraps a long title to the screen width', async () => {
   const lines: string[] = must(component, 'review component').render(40)
   expect(lines.filter((l) => visibleWidth(l) > 40)).toEqual([])
   expect(lines.slice(1, 4).join(' ')).toContain('very long feature title very')
+})
+
+async function mountReview(markdown: string, width = 40, rows = 30) {
+  let component: Renderable | undefined
+  const terminal = { rows, columns: width }
+  const tui = asMock<TUI>({ requestRender: () => {}, terminal })
+  const ctx = asMock<ExtensionContext>({
+    mode: 'tui',
+    ui: {
+      custom: (
+        factory: (tui: TUI, theme: Theme, kb: unknown, done: (result: Answers | undefined) => void) => Renderable,
+      ) =>
+        new Promise((resolve) => {
+          component = factory(tui, plainTheme, undefined, resolve)
+          must(component, 'review component').handleInput('\r')
+        }),
+    },
+  })
+  initTheme('dark')
+  const pi = asMock<ExtensionAPI>({ appendEntry: () => {} })
+  await reviewDocument(pi, ctx, { title: 'Spec', markdown })
+  return { component: must(component, 'review component'), terminal }
+}
+
+const longMarkdown = (n: number) => `# Doc\n\n${Array.from({ length: n }, (_, i) => `paragraph ${i}`).join('\n\n')}`
+const thumbLine = (lines: string[]) => lines.findIndex((l) => l.includes('█'))
+
+test('review overlay frames the body and wheel scrolls with a moving scrollbar', async () => {
+  const { component } = await mountReview(longMarkdown(40), 40, 20)
+  let lines = component.render(40)
+  expect(stripAnsi(must(lines[0], 'top border'))).toMatch(/^╭─+╮$/)
+  expect(stripAnsi(must(lines[lines.length - 1], 'bottom border'))).toMatch(/^╰─+╯$/)
+  expect(lines.filter((l) => visibleWidth(l) > 40)).toEqual([])
+  const topIndexes = lines.flatMap((l, i) => (stripAnsi(l).startsWith('╭') ? [i] : []))
+  expect(topIndexes.length).toBe(2)
+  const inner = lines.slice(must(topIndexes[0], 'review top') + 1, must(topIndexes[1], 'picker top') - 1)
+  expect(inner.length).toBeGreaterThan(0)
+  for (const line of inner) {
+    expect(stripAnsi(line).startsWith('│')).toBe(true)
+    expect(stripAnsi(line).endsWith('│')).toBe(true)
+  }
+  expect(inset(stripAnsi(must(inner[0], 'title line'))).startsWith(' ')).toBe(true)
+  expect(lines.join('\n')).not.toContain('PgUp/PgDn scroll')
+  expect(thumbLine(lines)).toBeGreaterThan(0)
+
+  const before = lines.join('\n')
+  expect(component.handleMouse?.(wheelEvent(3))).toEqual({ handled: true })
+  lines = component.render(40)
+  expect(lines.join('\n')).not.toBe(before)
+  component.handleMouse?.(wheelEvent(-3))
+  expect(component.render(40).join('\n')).toBe(before)
+  component.handleMouse?.(wheelEvent(3))
+  lines = component.render(40)
+
+  component.handleMouse?.(wheelEvent(9999))
+  const scrolled = component.render(40)
+  expect(scrolled.filter((l) => visibleWidth(l) > 40)).toEqual([])
+  expect(thumbLine(scrolled)).not.toBe(thumbLine(lines))
+})
+
+test('review overlay keeps every line within width across page and wheel scrolling', async () => {
+  const { component } = await mountReview(longMarkdown(60), 32, 18)
+  const check = (ls: string[]) => expect(ls.filter((l) => visibleWidth(l) > 32)).toEqual([])
+  check(component.render(32))
+  for (let i = 0; i < 4; i++) {
+    component.handleInput('\u001b[6~')
+    check(component.render(32))
+  }
+  component.handleMouse?.(wheelEvent(9999))
+  check(component.render(32))
+  component.handleInput('\u001b[5~')
+  check(component.render(32))
+})
+
+test('review overlay clamps wheel scrolling at both body edges', async () => {
+  const { component } = await mountReview(longMarkdown(40), 40, 20)
+  component.handleMouse?.(wheelEvent(9999))
+  const bottom = component.render(40).join('\n')
+  component.handleMouse?.(wheelEvent(9999))
+  expect(component.render(40).join('\n')).toBe(bottom)
+  component.handleMouse?.(wheelEvent(-9999))
+  const top = component.render(40).join('\n')
+  component.handleMouse?.(wheelEvent(-9999))
+  expect(component.render(40).join('\n')).toBe(top)
+  expect(top).not.toBe(bottom)
+})
+
+test('pageDown and pageUp still move the review body window', async () => {
+  const { component } = await mountReview(longMarkdown(60), 40, 20)
+  const initial = component.render(40).join('\n')
+  component.handleInput('\u001b[6~')
+  const down = component.render(40).join('\n')
+  expect(down).not.toBe(initial)
+  component.handleInput('\u001b[5~')
+  expect(component.render(40).join('\n')).toBe(initial)
+})
+
+test('review overlay keeps the frame and scroll bounds after a resize', async () => {
+  const { component, terminal } = await mountReview(longMarkdown(60), 40, 24)
+  component.handleMouse?.(wheelEvent(9999))
+  component.render(40)
+  terminal.rows = 12
+  component.invalidate?.()
+  const resized = component.render(40)
+  expect(resized.filter((l) => visibleWidth(l) > 40)).toEqual([])
+  expect(stripAnsi(must(resized[0], 'top border'))).toMatch(/^╭─+╮$/)
+  component.handleMouse?.(wheelEvent(9999))
+  const bottom = component.render(40).join('\n')
+  component.handleMouse?.(wheelEvent(9999))
+  expect(component.render(40).join('\n')).toBe(bottom)
+})
+
+test('scrollbarColumn is blank when content fits and marks a proportional thumb otherwise', () => {
+  expect(scrollbarColumn(plainTheme, 0, 5, 5)).toEqual([' ', ' ', ' ', ' ', ' '])
+  const top = scrollbarColumn(plainTheme, 0, 5, 50)
+  const bottom = scrollbarColumn(plainTheme, 45, 5, 50)
+  expect(top.filter((c) => c === '█')).toHaveLength(1)
+  expect(top[0]).toBe('█')
+  expect(bottom[4]).toBe('█')
+})
+
+test('frameLines pads content to the given width', () => {
+  const framed = frameLines(plainTheme, ['hi', ''], 10)
+  expect(framed).toEqual(['╭────────╮', '│hi      │', '│        │', '╰────────╯'])
+  for (const line of framed) expect(visibleWidth(line)).toBe(10)
+  expect(padLine('x', 3)).toBe('x  ')
+})
+
+test('interview option list scrolls on wheel only when it overflows', () => {
+  const many: Question = {
+    id: 'q',
+    header: 'Many',
+    question: 'Pick one?',
+    options: Array.from({ length: 40 }, (_, i) => ({ label: `Option ${i + 1}` })),
+  }
+  const ui = createInterview(fakeTui(), plainTheme, [many], () => {})
+  let lines = ui.render(60)
+  expect(lines.filter((l) => visibleWidth(l) > 60)).toEqual([])
+  expect(lines.some((l) => l.includes('█'))).toBe(true)
+  expect(lines.join('\n')).not.toContain('Type something.')
+  expect(ui.handleMouse?.(wheelEvent(9999))).toEqual({ handled: true })
+  lines = ui.render(60)
+  expect(lines.join('\n')).toContain('Type something.')
+  expect(lines.filter((l) => visibleWidth(l) > 60)).toEqual([])
+
+  const short = createInterview(fakeTui(), plainTheme, [pick('a', 'A')], () => {})
+  const shortLines = short.render(60)
+  expect(shortLines.some((l) => l.includes('█'))).toBe(false)
+  expect(short.handleMouse?.(wheelEvent(3))).toEqual({ handled: true })
+  expect(short.render(60).join('\n')).toBe(shortLines.join('\n'))
 })
 
 test('ask_user requires multiSelect and the fallback collects several picks', async () => {

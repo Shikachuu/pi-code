@@ -6,6 +6,8 @@ import {
   Key,
   matchesKey,
   type TUI,
+  type TuiMouseEvent,
+  type TuiMouseEventResult,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
@@ -78,6 +80,39 @@ export function layoutTabs(tabs: string[], width: number, indent = ' '): string[
 
 export function initialState(questions: Question[]): State {
   return { questions, tab: 0, cursor: 0, answers: {}, editing: false }
+}
+
+/** Pad a possibly-styled line to exactly `width` visible cells. */
+export function padLine(line: string, width: number): string {
+  const room = Math.max(0, width)
+  const clipped = truncateToWidth(line, room)
+  return clipped + ' '.repeat(Math.max(0, room - visibleWidth(clipped)))
+}
+
+/** Wrap content lines in a one-column border using the theme's border token. */
+export function frameLines(theme: Theme, lines: string[], width: number): string[] {
+  const w = Math.max(1, width)
+  if (w < 3) return lines.map((line) => padLine(line, w))
+  const inner = w - 2
+  const edge = (s: string) => theme.fg('border', s)
+  return [
+    edge(`╭${'─'.repeat(inner)}╮`),
+    ...lines.map((line) => `${edge('│')}${padLine(line, inner)}${edge('│')}`),
+    edge(`╰${'─'.repeat(inner)}╯`),
+  ]
+}
+
+/** One-cell scrollbar glyphs (dim track, accent thumb) for a window of `pageSize` rows. */
+export function scrollbarColumn(theme: Theme, offset: number, pageSize: number, total: number): string[] {
+  const rows = Math.max(1, Math.floor(pageSize))
+  if (total <= rows) return Array.from({ length: rows }, () => ' ')
+  const thumbSize = Math.max(1, Math.min(rows, Math.round((rows / total) * rows)))
+  const maxThumbTop = Math.max(0, rows - thumbSize)
+  const maxScroll = Math.max(1, total - rows)
+  const top = Math.min(maxThumbTop, Math.max(0, Math.round((offset / maxScroll) * maxThumbTop)))
+  const thumb = theme.fg('accent', '█')
+  const track = theme.fg('dim', '│')
+  return Array.from({ length: rows }, (_, i) => (i >= top && i < top + thumbSize ? thumb : track))
 }
 
 export function hasSubmitTab(questions: Question[]): boolean {
@@ -220,6 +255,10 @@ export function createInterview(
 ): InterviewComponent {
   let state = initialState(questions)
   let cached: string[] | undefined
+  let listScroll = 0
+  let listMax = 0
+  let lastWidth = 80
+  let measured = false
   const editorTheme: EditorTheme = {
     borderColor: (s) => theme.fg('accent', s),
     selectList: {
@@ -235,6 +274,7 @@ export function createInterview(
   function dispatch(action: Action) {
     const wasEditing = state.editing
     state = reduce(state, action)
+    listScroll = 0
     if (state.editing && !wasEditing) {
       const q = state.questions[state.tab]
       editor.setText((q && state.answers[q.id]?.freeform) ?? '')
@@ -250,11 +290,16 @@ export function createInterview(
   function render(width: number): string[] {
     if (cached) return cached
     const w = Math.max(1, width)
-    const lines: string[] = []
-    const add = (prefix: string, text: string) => {
+    const inner = Math.max(1, w - 2)
+    lastWidth = w
+    measured = true
+    const head: string[] = []
+    const options: string[] = []
+    const after: string[] = []
+    const add = (target: string[], prefix: string, text: string) => {
       const pw = visibleWidth(prefix)
-      const wrapped = wrapTextWithAnsi(text, Math.max(1, w - pw))
-      wrapped.forEach((line, i) => lines.push(`${i === 0 ? prefix : ' '.repeat(pw)}${line}`))
+      const wrapped = wrapTextWithAnsi(text, Math.max(1, inner - pw))
+      wrapped.forEach((line, i) => target.push(`${i === 0 ? prefix : ' '.repeat(pw)}${line}`))
     }
 
     if (hasSubmitTab(questions)) {
@@ -271,27 +316,27 @@ export function createInterview(
           ? theme.bg('selectedBg', theme.fg('text', submit))
           : theme.fg(allAnswered(state) ? 'success' : 'dim', submit),
       )
-      lines.push(...layoutTabs(tabs, w), '')
+      head.push(...layoutTabs(tabs, inner), '')
     }
 
     const q = questions[state.tab]
     if (!q) {
-      add(' ', theme.fg('accent', theme.bold('Review your answers')))
-      lines.push('')
+      add(head, ' ', theme.fg('accent', theme.bold('Review your answers')))
+      head.push('')
       for (const question of questions) {
         const answer = state.answers[question.id]
         const parts = answer ? [...answer.selected, ...(answer.freeform ? [`"${answer.freeform}"`] : [])] : []
-        add(' ', `${theme.fg('muted', `${question.header}: `)}${theme.fg('text', parts.join(', ') || '-')}`)
+        add(options, ' ', `${theme.fg('muted', `${question.header}: `)}${theme.fg('text', parts.join(', ') || '-')}`)
       }
-      lines.push('')
-      if (allAnswered(state)) add(' ', theme.fg('success', 'Press Enter to submit'))
+      after.push('')
+      if (allAnswered(state)) add(after, ' ', theme.fg('success', 'Press Enter to submit'))
       else {
         const missing = questions.filter((x) => !isAnswered(state.answers[x.id])).map((x) => x.header)
-        add(' ', theme.fg('warning', `Unanswered: ${missing.join(', ')}`))
+        add(after, ' ', theme.fg('warning', `Unanswered: ${missing.join(', ')}`))
       }
     } else {
-      add(' ', theme.fg('text', theme.bold(q.question)))
-      lines.push('')
+      add(head, ' ', theme.fg('text', theme.bold(q.question)))
+      head.push('')
       const answer = state.answers[q.id]
       const rows = [...q.options, { label: q.otherLabel ?? DEFAULT_OTHER_LABEL, description: answer?.freeform }]
       rows.forEach((opt, i) => {
@@ -300,22 +345,30 @@ export function createInterview(
         const chosen = isOther ? !!answer?.freeform : !!answer?.selected.includes(opt.label)
         const mark = q.multiSelect && !isOther ? (chosen ? '[x] ' : '[ ] ') : chosen ? '* ' : ''
         const prefix = active ? theme.fg('accent', '> ') : '  '
-        add(prefix, theme.fg(active ? 'accent' : 'text', `${i + 1}. ${mark}${opt.label}`))
-        if (opt.description) add('     ', theme.fg('muted', opt.description))
+        add(options, prefix, theme.fg(active ? 'accent' : 'text', `${i + 1}. ${mark}${opt.label}`))
+        if (opt.description) add(options, '     ', theme.fg('muted', opt.description))
       })
       if (state.editing) {
-        lines.push('')
-        for (const line of editor.render(Math.max(1, w - 2))) lines.push(` ${line}`)
+        after.push('')
+        for (const line of editor.render(Math.max(1, inner - 2))) after.push(` ${line}`)
       }
     }
 
-    lines.push('')
+    after.push('')
     const help = state.editing
       ? 'Enter save - Esc back'
       : `${hasSubmitTab(questions) ? 'Tab/Shift+Tab switch - ' : ''}Up/Down or 1-9 pick - Enter select${q?.multiSelect ? ' - Space toggle' : ''} - Esc cancel`
-    add(' ', theme.fg('dim', help))
-    cached = lines
-    return lines
+    add(after, ' ', theme.fg('dim', help))
+
+    const budget = Math.max(1, tui.terminal.rows - head.length - after.length - 2)
+    listMax = Math.max(0, options.length - budget)
+    listScroll = Math.min(listScroll, listMax)
+    const visible = options.slice(listScroll, listScroll + budget)
+    const cells = scrollbarColumn(theme, listScroll, budget, options.length)
+    const block = visible.map((line, i) => padLine(line, inner - 1) + (cells[i] ?? ' '))
+
+    cached = frameLines(theme, [...head, ...block, ...after], w)
+    return cached
   }
 
   return {
@@ -335,6 +388,16 @@ export function createInterview(
       }
       const action = keyToAction(data)
       if (action) dispatch(action)
+    },
+    handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+      if (event.type !== 'wheel') return undefined
+      if (!measured) render(lastWidth)
+      if (listMax > 0) {
+        listScroll = Math.max(0, Math.min(listMax, listScroll + (event.wheelDelta ?? 0)))
+        cached = undefined
+        tui.requestRender()
+      }
+      return { handled: true }
     },
   }
 }
