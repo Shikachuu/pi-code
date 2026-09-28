@@ -9,7 +9,6 @@ import { reviewDocument, showDocument } from '../ask-user/review.ts'
 import { registerVerifyDocRenderer, runVerification } from '../verification/index.ts'
 import { memoryBlock } from './memory.ts'
 import {
-  demoteHeadings,
   implementPrompt,
   planPrompt,
   type ResearchReport,
@@ -453,7 +452,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
           ctx.cwd,
           state.slug,
           'plan.md',
-          replaceSection(planDoc, 'Verification', `- verdict: ${verdict}\n\n${demoteHeadings(body)}`),
+          replaceSection(planDoc, 'Verification', `- verdict: ${verdict}\n\n${body}`),
         )
       }
 

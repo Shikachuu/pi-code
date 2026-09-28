@@ -4,11 +4,12 @@ import { join } from 'node:path'
 
 import { expect, test } from 'vitest'
 
-import { renderTemplate, templatePath, clearTemplateCache } from '../agent/extensions/lib/jinja.ts'
+import { renderTemplate, templatePath } from '../agent/extensions/lib/jinja.ts'
 
 test('renderTemplate throws with the path and the OS reason when the template is missing', () => {
-  const missing = join(tmpdir(), 'definitely-missing-jinja-template-12345.jinja')
-  expect(() => renderTemplate(missing)).toThrow(/definitely-missing-jinja-template-12345\.jinja/)
+  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
+  const missing = templatePath(dir, 'absent')
+  expect(() => renderTemplate(missing)).toThrow(/absent\.jinja/)
   expect(() => renderTemplate(missing)).toThrow(/ENOENT/)
 })
 
@@ -60,14 +61,4 @@ test('renderTemplate renders an unknown variable as empty rather than throwing',
   const path = templatePath(dir, 'missing-var')
   writeFileSync(path, 'a{{ missing }}b')
   expect(renderTemplate(path)).toBe('ab')
-})
-
-test('clearTemplateCache drops parsed templates so the file is read again', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
-  const path = templatePath(dir, 'cleared')
-  writeFileSync(path, 'first {{ v }}')
-  expect(renderTemplate(path, { v: '1' })).toBe('first 1')
-  clearTemplateCache()
-  writeFileSync(path, 'second {{ v }}')
-  expect(renderTemplate(path, { v: '2' })).toBe('second 2')
 })

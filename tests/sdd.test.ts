@@ -230,6 +230,18 @@ test('renderResearch renders - None under every empty list', () => {
   expect(md).toMatch(/## Sources\n\n- None/)
 })
 
+test('renderResearch lists every open question', () => {
+  const md = renderResearch({
+    question: 'Q',
+    summary: 'S',
+    findings: [],
+    implications: [],
+    recommendation: 'R',
+    openQuestions: ['first?', 'second?'],
+  })
+  expect(md).toMatch(/## Open questions\n\n- first\?\n- second\?/)
+})
+
 test('every workflow script parses', () => {
   for (const script of [SINGLE_SCRIPT, ENRICH_SCRIPT, DISCOVERY_SCRIPT, RESEARCH_SCRIPT]) {
     expect(parseWorkflowScript(script).meta.name.startsWith('sdd_')).toBe(true)
@@ -1212,6 +1224,24 @@ test('section scanning and demoteHeadings both ignore `##` lines inside code fen
 
 test('demoteHeadings shifts h1 down one level and leaves h6 alone', () => {
   expect(demoteHeadings('# H1\n###### H6\n##### H5')).toBe('## H1\n###### H6\n###### H5')
+})
+
+test('an unbalanced fence leaves later headings undemoted and out of section bounds', () => {
+  const md = '## A\n\n```\n## B\n'
+  expect(demoteHeadings(md)).toBe('### A\n\n```\n## B\n')
+  expect(readSection(md, 'A')).toBe('```\n## B')
+})
+
+test('tilde fences are not recognised, so headings inside them are demoted', () => {
+  const md = '## A\n\n~~~\n## B\n~~~\n'
+  expect(demoteHeadings(md)).toBe('### A\n\n~~~\n### B\n~~~\n')
+  expect(readSection(md, 'A')).toBe('~~~')
+})
+
+test('replaceSection demotes headings in the body so they cannot end the section', () => {
+  const md = '# Plan\n\n## Verification\n- verdict: APPROVE\n'
+  const updated = replaceSection(md, 'Verification', '- verdict: APPROVE\n\n## Summary\ntext')
+  expect(updated).toContain('## Verification\n\n- verdict: APPROVE\n\n### Summary\ntext')
 })
 
 test('replaceSection replaces in place and appends a missing section with one trailing newline', () => {

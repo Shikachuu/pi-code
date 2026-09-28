@@ -1,0 +1,2 @@
+*.jinja text eol=lf
+tests/fixtures/sdd-golden/*.txt -text

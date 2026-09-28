@@ -64,7 +64,7 @@ export function demoteHeadings(markdown: string): string {
 export function replaceSection(markdown: string, heading: string, body: string): string {
   const lines = markdown.trimEnd().split('\n')
   const bounds = sectionBounds(lines, heading)
-  const block = [`## ${heading}`, '', body, '']
+  const block = [`## ${heading}`, '', demoteHeadings(body), '']
   if (!bounds) return [...lines, '', ...block].join('\n')
   return [...lines.slice(0, bounds.start), ...block, ...lines.slice(bounds.end)].join('\n').trimEnd() + '\n'
 }

@@ -8,7 +8,7 @@ before the port, and `tests/jinja-golden.test.ts` asserts equality.
 
 The only rendering-mechanism change is in `agent/extensions/lib/jinja.ts`: the
 library strips a trailing newline from the template source before parsing, but
-loop bodies and substituted values can still leave one in the output. The loaded
+loop bodies and substituted values can still leave one in the output. The loader
 strips that newline so rendered text keeps the pre-port no-trailing-newline
 shape. Without it every list-ended report gained a newline.
 
