@@ -9,6 +9,7 @@ import { renderTemplate, templatePath } from '../agent/extensions/lib/jinja.ts'
 test('renderTemplate throws with the path and the OS reason when the template is missing', () => {
   const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
   const missing = templatePath(dir, 'absent')
+  expect(() => renderTemplate(missing)).toThrow(/cannot read template/)
   expect(() => renderTemplate(missing)).toThrow(/absent\.jinja/)
   expect(() => renderTemplate(missing)).toThrow(/ENOENT/)
 })

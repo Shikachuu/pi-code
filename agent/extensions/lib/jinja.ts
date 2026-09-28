@@ -9,7 +9,7 @@ export function templatePath(dir: string, name: string): string {
   return join(dir, `${name}.jinja`)
 }
 
-export function stripTrailingNewline(text: string): string {
+function stripTrailingNewline(text: string): string {
   return text.endsWith('\n') ? text.slice(0, -1) : text
 }
 
@@ -21,7 +21,12 @@ export function stripTrailingNewline(text: string): string {
 export function renderTemplate(path: string, context: Record<string, unknown> = {}): string {
   let template = cache.get(path)
   if (!template) {
-    const source = readFileSync(path, 'utf8')
+    let source: string
+    try {
+      source = readFileSync(path, 'utf8')
+    } catch (error) {
+      throw new Error(`cannot read template ${path}: ${(error as Error).message}`, { cause: error })
+    }
     try {
       template = new Template(source)
     } catch (error) {

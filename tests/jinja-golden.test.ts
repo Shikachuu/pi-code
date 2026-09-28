@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { assert, expect, test } from 'vitest'
@@ -39,6 +39,26 @@ const ENRICHMENT = {
   scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
   repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
   questions: { questions: [] },
+}
+
+const COVERED: Record<string, string[]> = {
+  'spec-template': ['spec-template'],
+  'plan-template': ['plan-template'],
+  'plan-prompt': ['plan-prompt-full', 'plan-prompt-minimal', 'plan-prompt-research', 'plan-prompt-memory'],
+  'implement-prompt': ['implement-prompt'],
+  'research-report': ['research-report'],
+  'enrich-scope': ['enrich-scope', 'enrich-scope-empty'],
+  'enrich-repo': ['enrich-repo'],
+  'enrich-questions': ['enrich-questions', 'enrich-questions-empty'],
+  'draft-prompt': ['draft-prompt', 'draft-revise'],
+  'discovery-plan': ['discovery-plan', 'discovery-plan-empty'],
+  'discovery-probe': ['discovery-probe'],
+  'discovery-synth': ['discovery-synth', 'discovery-synth-existing'],
+  'research-queries': ['research-queries'],
+  'research-gather': ['research-gather'],
+  'research-verify': ['research-verify'],
+  'research-report-prompt': ['research-report-prompt', 'research-report-prompt-no-discovery'],
+  'verification-summary': ['verification-summary', 'verification-summary-missing'],
 }
 
 test('rendered sdd templates match the pre-port goldens byte for byte', () => {
@@ -148,6 +168,19 @@ test('draftArgs revises when a draft is present even without feedback', () => {
   expect(args.prompt).not.toContain('Compose a feature spec')
 })
 
+test('draftArgs renders a whitespace-only feedback block in the revise branch', () => {
+  const args = draftArgs({
+    request: 'add phone',
+    enrichment: ENRICHMENT,
+    answers: '',
+    memory: '',
+    draft: '# D',
+    feedback: '   ',
+  })
+  expect(args.label).toBe('revise spec')
+  expect(args.prompt).toContain('<feedback>\n   \n</feedback>')
+})
+
 test('discovery prompts match the pre-port goldens', () => {
   const discovery = discoveryArgs(SPEC, undefined, MEMORY)
   expectGolden('discovery-plan', discovery.plan.prompt)
@@ -197,6 +230,18 @@ test('sdd prompt builders carry their inputs independently of the goldens', () =
   expect(researchArgs('topic', SPEC, DISCOVERY).queries.prompt).toContain('<discovery>')
 })
 
+test('planPrompt keeps a research block whose content is empty', () => {
+  const prompt = planPrompt({
+    slug: 's',
+    dir: 'd',
+    spec: SPEC,
+    discovery: undefined,
+    research: [{ path: 'r1.md', content: '' }],
+    memory: '',
+  })
+  expect(prompt).toContain('<research path="r1.md">\n\n</research>')
+})
+
 test('planPrompt substitutes user content containing template delimiters verbatim', () => {
   const dirty = 'text {{ oops }} {% raw %} & <tag> "quote"'
   const prompt = planPrompt({
@@ -222,7 +267,7 @@ test('renderResearch renders a finding with no sources as claim ()', () => {
   expect(md).toContain('- No sources ()')
 })
 
-test('every tracked template has a golden fixture and every fixture has a template', () => {
+test('every tracked template has a golden fixture and every fixture is asserted', () => {
   const templates = ['sdd', 'verification'].flatMap((dir) =>
     readdirSync(join(import.meta.dirname, '..', 'agent', 'extensions', dir, 'templates'))
       .filter((file) => file.endsWith('.jinja'))
@@ -231,31 +276,24 @@ test('every tracked template has a golden fixture and every fixture has a templa
   const fixtures = new Set(
     readdirSync(join(import.meta.dirname, 'fixtures', 'sdd-golden')).map((file) => file.replace(/\.txt$/, '')),
   )
-  const covered: Record<string, string[]> = {
-    'spec-template': ['spec-template'],
-    'plan-template': ['plan-template'],
-    'plan-prompt': ['plan-prompt-full', 'plan-prompt-minimal', 'plan-prompt-research', 'plan-prompt-memory'],
-    'implement-prompt': ['implement-prompt'],
-    'research-report': ['research-report'],
-    'enrich-scope': ['enrich-scope', 'enrich-scope-empty'],
-    'enrich-repo': ['enrich-repo'],
-    'enrich-questions': ['enrich-questions', 'enrich-questions-empty'],
-    'draft-prompt': ['draft-prompt', 'draft-revise'],
-    'discovery-plan': ['discovery-plan', 'discovery-plan-empty'],
-    'discovery-probe': ['discovery-probe'],
-    'discovery-synth': ['discovery-synth', 'discovery-synth-existing'],
-    'research-queries': ['research-queries'],
-    'research-gather': ['research-gather'],
-    'research-verify': ['research-verify'],
-    'research-report-prompt': ['research-report-prompt', 'research-report-prompt-no-discovery'],
-    'verification-summary': ['verification-summary', 'verification-summary-missing'],
-  }
-  expect(Object.keys(covered).sort()).toEqual([...templates].sort())
-  const referenced = new Set(Object.values(covered).flat())
-  for (const [name, goldens] of Object.entries(covered)) {
+  expect(Object.keys(COVERED).sort()).toEqual([...templates].sort())
+  const referenced = new Set(Object.values(COVERED).flat())
+  for (const [name, goldens] of Object.entries(COVERED)) {
     for (const fixture of goldens) assert.isTrue(fixtures.has(fixture), `${name} -> ${fixture}`)
   }
   for (const fixture of fixtures) assert.isTrue(referenced.has(fixture), `orphan fixture ${fixture}`)
+  const source = readFileSync(join(import.meta.dirname, 'jinja-golden.test.ts'), 'utf8')
+  const asserted = new Set([...source.matchAll(/expectGolden\(\s*'([^']+)'/g)].map((match) => match[1]))
+  for (const fixture of referenced) assert.isTrue(asserted.has(fixture), `golden not asserted: ${fixture}`)
+})
+
+test('tracked .jinja templates use LF line endings', () => {
+  for (const dir of ['sdd', 'verification']) {
+    const templatesDir = join(import.meta.dirname, '..', 'agent', 'extensions', dir, 'templates')
+    for (const file of readdirSync(templatesDir).filter((name) => name.endsWith('.jinja'))) {
+      assert.isFalse(readFileSync(join(templatesDir, file), 'utf8').includes('\r'), file)
+    }
+  }
 })
 
 test('rendered prompts contain no unrendered template syntax', () => {

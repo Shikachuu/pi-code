@@ -3,8 +3,6 @@ import { join } from 'node:path'
 
 import { assert } from 'vitest'
 
-import { stripTrailingNewline } from '../agent/extensions/lib/jinja.ts'
-
 const DIR = join(import.meta.dirname, 'fixtures', 'sdd-golden')
 
 export function expectGolden(name: string, actual: string): void {
@@ -15,7 +13,7 @@ export function expectGolden(name: string, actual: string): void {
   }
   let expected: string
   try {
-    expected = stripTrailingNewline(readFileSync(path, 'utf8'))
+    expected = readFileSync(path, 'utf8').replace(/\n$/, '')
   } catch {
     throw new Error(`missing golden ${name}; run \`mise run golden\``)
   }

@@ -21,7 +21,7 @@ function tmp(): string {
 }
 
 function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
+  return execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 }
 
 function initRepo(): string {
@@ -415,7 +415,9 @@ test('renderSummary renders every populated list under its own heading', () => {
       },
       commentAuditor: {
         ...must(reports().commentAuditor, 'comment auditor'),
+        mustKill: [{ file: 'm.ts', line: 2, issue: 'narration', fix: 'delete' }],
         correctness: [{ file: 'c.ts', line: 1, issue: 'wrong', fix: 'fix' }],
+        kept: [{ file: 'k.ts', line: 3, issue: 'good', fix: 'keep' }],
         skipped: ['not our code'],
       },
     }),
@@ -423,7 +425,9 @@ test('renderSummary renders every populated list under its own heading', () => {
   expect(md).toMatch(/### Important\n- \[code-reviewer\] i\.ts:4 missing -> add it/)
   expect(md).toMatch(/### Nits\n- \[test-engineer\] n\.ts:5 tidy/)
   expect(md).toMatch(/### Coverage Gaps \(from test-engineer\)\n- gap one\n- gap two/)
+  expect(md).toMatch(/\*\*MUST KILL\*\*\n- m\.ts:2 narration -> delete/)
   expect(md).toMatch(/\*\*Correctness\*\*\n- c\.ts:1 wrong -> fix/)
+  expect(md).toMatch(/\*\*Kept\*\*\n- k\.ts:3 good - keep/)
   expect(md).toMatch(/\*\*Skipped\*\*\n- not our code/)
 })
 
