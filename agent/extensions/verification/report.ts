@@ -17,6 +17,7 @@ export type Severity = 'critical' | 'important' | 'nit'
 
 export interface Finding {
   severity: Severity
+  category: string
   file: string
   line: number
   issue: string
@@ -25,6 +26,7 @@ export interface Finding {
 
 const FINDING_SCHEMA = obj({
   severity: { type: 'string', enum: ['critical', 'important', 'nit'] },
+  category: str,
   file: str,
   line: { type: 'number' },
   issue: str,
@@ -98,7 +100,7 @@ export interface Reports {
   commentAuditor: CommentAuditorReport | null
 }
 
-interface MergedFinding extends Finding {
+export interface MergedFinding extends Finding {
   agents: string[]
 }
 
@@ -115,6 +117,7 @@ function auditToFindings(report: CommentAuditorReport | null): { agent: string; 
   const findings: Finding[] = [
     ...report.correctness.map((i) => ({
       severity: 'critical' as const,
+      category: 'comment-correctness',
       file: i.file,
       line: i.line,
       issue: i.issue,
@@ -122,6 +125,7 @@ function auditToFindings(report: CommentAuditorReport | null): { agent: string; 
     })),
     ...report.mustKill.map((i) => ({
       severity: 'important' as const,
+      category: 'comment-must-kill',
       file: i.file,
       line: i.line,
       issue: i.issue,
@@ -129,6 +133,7 @@ function auditToFindings(report: CommentAuditorReport | null): { agent: string; 
     })),
     ...report.nits.map((i) => ({
       severity: 'nit' as const,
+      category: 'comment-nit',
       file: i.file,
       line: i.line,
       issue: i.issue,
@@ -184,7 +189,7 @@ function bullet(text: string): string {
 }
 
 function findingLine(f: MergedFinding): string {
-  return bullet(`${attribution(f.agents)} ${f.file}:${f.line} ${f.issue}${f.fix ? ` -> ${f.fix}` : ''}`)
+  return bullet(`${attribution(f.agents)} (${f.category}) ${f.file}:${f.line} ${f.issue}${f.fix ? ` -> ${f.fix}` : ''}`)
 }
 
 function auditLine(item: AuditItem, arrow: string): string {

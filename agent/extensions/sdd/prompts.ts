@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { renderTemplate, templatePath } from '../lib/jinja.ts'
@@ -75,6 +76,11 @@ export function validatePlan(markdown: string): string[] {
   if (!tasks || !/^\s*- \[[ x]\]/m.test(tasks)) errors.push('"## Tasks" needs at least one "- [ ]" checkbox item')
   const criteria = readSection(markdown, 'Acceptance criteria')
   if (!criteria || !/^\s*[-*\d]/m.test(criteria)) errors.push('"## Acceptance criteria" needs at least one list item')
+  const matrix = readSection(markdown, 'Test matrix')
+  if (!matrix || !/^\s*- .*->/m.test(matrix))
+    errors.push('"## Test matrix" needs at least one "- <path> - <behavior> -> <test>" row')
+  if (!readSection(markdown, 'Risky operations'))
+    errors.push('"## Risky operations" needs at least one item, or "- None"')
   const pipeline = readSection(markdown, 'Validation pipeline')
   if (!pipeline || !/`[^`]+`/.test(pipeline))
     errors.push('"## Validation pipeline" needs at least one command in backticks')
@@ -118,11 +124,34 @@ export function planPrompt(input: PlanPromptInput): string {
   })
 }
 
+const AGENTS_DIR = join(import.meta.dirname, '..', '..', 'agents')
+
+const RUBRIC_SECTIONS: Record<string, string[]> = {
+  'code-reviewer': ['Review framework', 'Severity'],
+  'test-engineer': ['Review framework', 'Severity'],
+  'comment-auditor': ['Keep list', 'Suppressions', 'Categories'],
+}
+
+export function reviewRubric(dir = AGENTS_DIR): string {
+  return Object.entries(RUBRIC_SECTIONS)
+    .map(([agent, sections]) => {
+      const markdown = readFileSync(join(dir, `${agent}.md`), 'utf8')
+      const body = sections.map((section) => {
+        const text = readSection(markdown, section)
+        if (!text) throw new Error(`review rubric: ${agent} has no "## ${section}"`)
+        return `### ${section}\n\n${demoteHeadings(text)}`
+      })
+      return [`## ${agent}`, ...body].join('\n\n')
+    })
+    .join('\n\n')
+}
+
 export interface ImplementPromptInput {
   slug: string
   plan: string
   planPath: string
   docs: string[]
+  rubric: string
 }
 
 export function implementPrompt(input: ImplementPromptInput): string {
@@ -131,5 +160,6 @@ export function implementPrompt(input: ImplementPromptInput): string {
     plan: input.plan,
     planPath: input.planPath,
     docs: input.docs.join(', '),
+    rubric: input.rubric,
   })
 }

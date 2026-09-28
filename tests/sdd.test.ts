@@ -10,6 +10,7 @@ import { parseWorkflowScript, runWorkflow, WorkflowErrorCode } from '@quintinsha
 import { expect, test, vi } from 'vitest'
 
 import register from '../agent/extensions/sdd/index.ts'
+import { appendFindings, fixInstructions, readFindings, recurringSinceLessons } from '../agent/extensions/sdd/ledger.ts'
 import { memoryBlock, parseEntries } from '../agent/extensions/sdd/memory.ts'
 import type { ProgressState } from '../agent/extensions/sdd/progress.ts'
 import {
@@ -17,6 +18,7 @@ import {
   readSection,
   renderResearch,
   replaceSection,
+  reviewRubric,
   validatePlan,
 } from '../agent/extensions/sdd/prompts.ts'
 import { SCOUT, type WorkflowRunner } from '../agent/extensions/sdd/runner.ts'
@@ -56,6 +58,12 @@ const VALID_PLAN = `# Plan: Phone
 
 ## Acceptance criteria
 - Users can save a phone number
+
+## Test matrix
+- \`users.ts:savePhone\` - rejects a malformed number -> users.test.ts "rejects a malformed number"
+
+## Risky operations
+- None
 
 ## Validation pipeline
 - \`mise run test\` - unit tests
@@ -177,13 +185,81 @@ test('memory reads hermes entries for the repo and the user', () => {
   )
 })
 
-test('validatePlan requires tasks, criteria and pipeline commands', () => {
+test('validatePlan requires tasks, criteria, a test matrix, risky operations and pipeline commands', () => {
   expect(validatePlan(VALID_PLAN)).toEqual([])
   const errors = validatePlan('# Plan\n\n## Tasks\n- do it\n\n## Validation pipeline\nrun tests\n')
-  expect(errors.length).toBe(3)
+  expect(errors.length).toBe(5)
   expect(errors.join('\n')).toMatch(/checkbox/)
   expect(errors.join('\n')).toMatch(/Acceptance criteria/)
+  expect(errors.join('\n')).toMatch(/Test matrix/)
+  expect(errors.join('\n')).toMatch(/Risky operations/)
   expect(errors.join('\n')).toMatch(/backticks/)
+})
+
+test('validatePlan rejects a test matrix without a covering test and an empty risky operations section', () => {
+  const noArrow = VALID_PLAN.replace(
+    /## Test matrix\n.*\n/,
+    '## Test matrix\n- `users.ts:savePhone` - rejects bad input\n',
+  )
+  expect(validatePlan(noArrow)).toEqual([expect.stringMatching(/Test matrix/)])
+  const emptyRisk = VALID_PLAN.replace('## Risky operations\n- None\n', '## Risky operations\n\n')
+  expect(validatePlan(emptyRisk)).toEqual([expect.stringMatching(/Risky operations/)])
+})
+
+test('reviewRubric pulls every blocking rule section from the real agent files', () => {
+  const rubric = reviewRubric()
+  for (const heading of [
+    '## code-reviewer',
+    '## test-engineer',
+    '## comment-auditor',
+    '### Review framework',
+    '### Severity',
+    '### Keep list',
+    '### Suppressions',
+    '### Categories',
+  ])
+    expect(rubric).toContain(heading)
+  expect(rubric, 'subheadings are demoted under their section').toContain('#### 1. Correctness')
+  expect(rubric).toMatch(/`critical`: must fix before merge/)
+})
+
+test('reviewRubric fails loudly when an agent file loses a rubric section', () => {
+  const dir = tmp()
+  for (const name of ['code-reviewer', 'test-engineer', 'comment-auditor'])
+    writeFileSync(join(dir, `${name}.md`), '# Agent\n\n## Review framework\nx\n\n## Severity\ny\n')
+  expect(() => reviewRubric(dir)).toThrow('review rubric: comment-auditor has no "## Keep list"')
+})
+
+test('readFindings returns no rounds for a missing or corrupt ledger', () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  expect(readFindings(cwd, slug)).toEqual([])
+  writeFileSync(join(featureDir(cwd, slug), 'findings.json'), '{not json')
+  expect(readFindings(cwd, slug)).toEqual([])
+  writeFileSync(join(featureDir(cwd, slug), 'findings.json'), '{"rounds": "nope"}')
+  expect(readFindings(cwd, slug)).toEqual([])
+})
+
+test('fixInstructions groups blocking findings by category and ignores nits', () => {
+  const finding = (severity: 'critical' | 'important' | 'nit', category: string, file: string) => ({
+    severity,
+    category,
+    file,
+    line: 1,
+    issue: 'x',
+    fix: '',
+    agents: ['code-reviewer'],
+  })
+  expect(fixInstructions([finding('nit', 'naming', 'a.ts')])).toBe('')
+  const text = fixInstructions([
+    finding('important', 'untested-error-path', 'a.ts'),
+    finding('critical', 'untested-error-path', 'b.ts'),
+    finding('important', 'comment-must-kill', 'c.ts'),
+    finding('nit', 'naming', 'd.ts'),
+  ])
+  expect(text).toMatch(/search the whole diff/)
+  expect(text).toContain('- untested-error-path (2): a.ts:1, b.ts:1\n- comment-must-kill (1): c.ts:1')
+  expect(text).not.toContain('naming')
 })
 
 test('renderResearch writes the fixed format with deduplicated sources', () => {
@@ -689,7 +765,16 @@ function verifyReports(verdictLine: 'APPROVE' | 'REQUEST CHANGES') {
       findings:
         verdictLine === 'APPROVE'
           ? []
-          : [{ severity: 'critical', file: 'a.ts', line: 1, issue: 'null deref', fix: 'guard it' }],
+          : [
+              {
+                severity: 'critical',
+                category: 'test-category',
+                file: 'a.ts',
+                line: 1,
+                issue: 'null deref',
+                fix: 'guard it',
+              },
+            ],
       verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'no' },
     },
     testEngineer: {
@@ -790,6 +875,108 @@ test('a second sdd_verify round replaces the report instead of stacking it', asy
   expect(count('### Critical'), 'one findings list').toBe(1)
   expect(count('- verdict: REQUEST CHANGES'), 'one verdict line').toBe(1)
   expect(plan, 'no level-2 heading inside the body').not.toMatch(/\n## Verification Summary/)
+})
+
+test('sdd_verify records every round in the ledger and feeds the last blocking findings back as prior', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools } = fakePi()
+  const prompts: { codeReviewer: { prompt: string }; commentAuditor: { prompt: string } }[] = []
+  let verdictLine: 'APPROVE' | 'REQUEST CHANGES' = 'REQUEST CHANGES'
+  register(pi, {
+    run: asMock<WorkflowRunner>(async (_script: string, options: WorkflowRunOptions) => {
+      prompts.push(options.args as (typeof prompts)[number])
+      return asMock({ result: verifyReports(verdictLine) })
+    }),
+  })
+  const gate = () => tool(tools, 'sdd_verify').execute('id', { feature: slug }, undefined, undefined, fakeCtx(cwd).ctx)
+  await withAgentDir(cwd, async () => {
+    const first = toolText(await gate())
+    expect(first).toMatch(/search the whole diff/)
+    expect(first).toContain('- test-category (1): a.ts:1\n- comment-must-kill (1): a.ts:3')
+    await gate()
+    verdictLine = 'APPROVE'
+    await gate()
+  })
+  expect(must(prompts[0], 'round 1').codeReviewer.prompt).not.toContain('<prior-findings>')
+  const second = must(prompts[1], 'round 2')
+  expect(second.codeReviewer.prompt).toContain('- [critical] (test-category) a.ts:1 null deref')
+  expect(second.codeReviewer.prompt, 'each agent sees only its own findings').not.toContain('a.ts:3')
+  expect(second.commentAuditor.prompt).toContain('- [important] (comment-must-kill) a.ts:3 narration')
+  const rounds = readFindings(cwd, slug)
+  expect(rounds.map((r) => [r.round, r.verdict, r.findings.length])).toEqual([
+    [1, 'REQUEST CHANGES', 2],
+    [2, 'REQUEST CHANGES', 2],
+    [3, 'APPROVE', 0],
+  ])
+})
+
+test('sdd_verify does not record a round when verification fails to finish', async () => {
+  const { cwd, slug } = featureRepo()
+  const { pi, tools } = fakePi()
+  register(pi, {
+    run: asMock<WorkflowRunner>(async () => {
+      throw new Error('Subagent was aborted')
+    }),
+  })
+  await withAgentDir(cwd, async () => {
+    const result = await tool(tools, 'sdd_verify').execute(
+      'id',
+      { feature: slug },
+      undefined,
+      undefined,
+      fakeCtx(cwd).ctx,
+    )
+    expect(toolText(result)).toMatch(/did not finish/)
+  })
+  expect(readFindings(cwd, slug)).toEqual([])
+})
+
+test('sdd_complete asks for one memory lesson per recurring category, once', async () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
+  const finding = (category: string, line: number, severity: 'important' | 'nit' = 'important') => ({
+    severity,
+    category,
+    file: 'a.ts',
+    line,
+    issue: `${category} at ${line}`,
+    fix: '',
+    agents: ['test-engineer'],
+  })
+  appendFindings(cwd, slug, {
+    verdict: 'REQUEST CHANGES',
+    findings: [finding('untested-error-path', 1), finding('one-off', 2), finding('naming', 3, 'nit')],
+  })
+  appendFindings(cwd, slug, {
+    verdict: 'REQUEST CHANGES',
+    findings: [finding('untested-error-path', 4), finding('naming', 5, 'nit')],
+  })
+  appendFindings(cwd, slug, { verdict: 'APPROVE', findings: [finding('naming', 6, 'nit')] })
+  setVerification(cwd, slug, 'APPROVE')
+  const { pi, tools } = fakePi()
+  register(pi)
+  const complete = async () =>
+    toolText(
+      await tool(tools, 'sdd_complete').execute(
+        'id',
+        { feature: slug, results: [{ criterion: 'saves phone', status: 'pass', evidence: 'tests pass' }] },
+        undefined,
+        undefined,
+        fakeCtx(cwd).ctx,
+      ),
+    )
+
+  const text = await complete()
+  expect(text).toMatch(/the feature is done/)
+  expect(text).toMatch(/memory_add with target "project" once per category/)
+  expect(text).toContain('- untested-error-path: 2 finding(s) over 2 round(s), e.g. "untested-error-path at 1"')
+  expect(text, 'a single finding in one round is not a pattern').not.toContain('one-off')
+  expect(text, 'nits never become lessons').not.toContain('naming')
+  expect(recurringSinceLessons(cwd, slug)).toEqual({ recurring: [], through: 3 })
+
+  setVerification(cwd, slug, 'APPROVE')
+  expect(await complete(), 'lessons are asked for only once').not.toMatch(/memory_add/)
 })
 
 test('sdd_verify approves without an agent pass when the scope has no changes', async () => {
@@ -938,6 +1125,7 @@ test('/implement marks the feature implementing only once the new session starts
   expect(switched, 'the new session keeps the selected model and thinking level').toEqual([selected, 'medium'])
   expect(readState(cwd, slug)?.phase).toBe('implementing')
   expect(sent()).toMatch(/sdd_complete with feature "phone"/)
+  expect(sent()).toMatch(/<review-rubric>\n## code-reviewer[\s\S]*### Keep list[\s\S]*<\/review-rubric>/)
   expect(active()).toEqual(['read', 'sdd_complete', 'sdd_verify'])
   expect(entries.at(-1)).toEqual({ type: 'sdd-session', data: { kind: 'implement', slug } })
 

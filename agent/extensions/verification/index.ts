@@ -3,7 +3,7 @@ import { Container, Markdown, Text } from '@earendil-works/pi-tui'
 import { loadAgentRegistry } from '@quintinshaw/pi-dynamic-workflows'
 
 import { runSdd, type WorkflowRunner } from '../sdd/runner.ts'
-import type { Reports } from './report.ts'
+import type { MergedFinding, Reports } from './report.ts'
 import { mergeFindings, renderSummary, verdict as computeVerdict } from './report.ts'
 import { formatScope, isLarge, resolveScope, type Scope } from './scope.ts'
 import { VERIFY_AGENTS, VERIFY_SCRIPT, verifyArgs } from './workflow.ts'
@@ -70,12 +70,14 @@ export default function (pi: ExtensionAPI, options: VerificationOptions = {}) {
 
 export interface RunVerificationOptions extends VerificationOptions {
   target?: string | undefined
+  prior?: MergedFinding[] | undefined
 }
 
 export interface VerificationResult {
   scope: Scope
   markdown: string
   verdict: 'APPROVE' | 'REQUEST CHANGES'
+  findings: MergedFinding[]
 }
 
 export async function runVerification(
@@ -99,14 +101,15 @@ export async function runVerification(
   const guardError = checkAgentRegistry(ctx.cwd)
   if (guardError) throw new Error(guardError)
 
-  const reports = await runSdd<Reports>(ctx, VERIFY_SCRIPT, verifyArgs(scope), {
+  const reports = await runSdd<Reports>(ctx, VERIFY_SCRIPT, verifyArgs(scope, options.prior), {
     label: 'verify',
     maxAgents: 3,
     run: options.run,
   })
 
   const markdown = renderSummary(scope, reports)
-  const result: VerificationResult = { scope, markdown, verdict: computeVerdict(reports, mergeFindings(reports)) }
+  const findings = mergeFindings(reports)
+  const result: VerificationResult = { scope, markdown, verdict: computeVerdict(reports, findings), findings }
   pi.appendEntry<VerifyDocEntry>(VERIFY_DOC_ENTRY, {
     title: `Verify: ${target || '(default)'}`,
     markdown,

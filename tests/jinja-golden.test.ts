@@ -22,6 +22,7 @@ const RESEARCH = [
   { path: 'research-1.md', content: '# Research: formats\n\nE.164 wins.\n' },
   { path: 'research-2.md', content: '# Research: storage\n\nStore normalized.\n' },
 ]
+const RUBRIC = '## code-reviewer\n\n### Severity\n\n- `critical`: must fix before merge.'
 const MEMORY = '<memory>\nProject memory:\n- uses pnpm\n</memory>'
 
 const SCOPE: Scope = {
@@ -107,6 +108,7 @@ test('implementPrompt matches the pre-port golden', () => {
       plan: PLAN_TEMPLATE,
       planPath: '.pi/sdd/phone/plan.md',
       docs: ['.pi/sdd/phone/spec.md', '.pi/sdd/phone/research-1.md'],
+      rubric: RUBRIC,
     }),
   )
 })
@@ -216,13 +218,31 @@ test('renderSummary matches the fully populated pre-port golden', () => {
       codeReviewer: {
         verdict: 'APPROVE',
         overview: 'CR overview.',
-        findings: [{ severity: 'critical', file: 'a.ts', line: 5, issue: 'critical issue', fix: 'fix' }],
+        findings: [
+          {
+            severity: 'critical',
+            category: 'test-category',
+            file: 'a.ts',
+            line: 5,
+            issue: 'critical issue',
+            fix: 'fix',
+          },
+        ],
         verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'yes' },
       },
       testEngineer: {
         verdict: 'APPROVE',
         overview: 'TE overview.',
-        findings: [{ severity: 'important', file: 'a.ts', line: 5, issue: 'important issue', fix: 'fix' }],
+        findings: [
+          {
+            severity: 'important',
+            category: 'test-category',
+            file: 'a.ts',
+            line: 5,
+            issue: 'important issue',
+            fix: 'fix',
+          },
+        ],
         coverageGaps: ['gap one', 'gap two'],
         smokeTest: { commands: ['npm test'], suite: 'passed', manual: 'checked', blocked: ['network'] },
       },
@@ -367,7 +387,13 @@ test('rendered prompts contain no unrendered template syntax', () => {
     ],
     [
       'implement-prompt',
-      implementPrompt({ slug: 'phone', plan: PLAN_TEMPLATE, planPath: '.pi/sdd/phone/plan.md', docs: [] }),
+      implementPrompt({
+        slug: 'phone',
+        plan: PLAN_TEMPLATE,
+        planPath: '.pi/sdd/phone/plan.md',
+        docs: [],
+        rubric: RUBRIC,
+      }),
     ],
     [
       'research-report',

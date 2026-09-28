@@ -68,7 +68,7 @@ Return your findings in the schema fields you were given. Do not write a markdow
 
 - `verdict`: `REQUEST CHANGES` when any finding is `critical` or `important`. `APPROVE` when findings are only nits, or none.
 - `overview`: 1-2 sentences on the change and overall test health.
-- `findings`: one entry per issue with `severity`, `file`, `line`, `issue`, and `fix`. For a missing test, cite the `file` and `line` of the behavior that needs it.
+- `findings`: one entry per issue with `severity`, `category`, `file`, `line`, `issue`, and `fix`. `category` is a short kebab-case slug for the kind of problem, such as `untested-error-path`, `ungated-destructive-op` or `missing-input-validation`. Give every finding of the same kind the same slug, and reuse a slug from `<prior-findings>` when one fits. For a missing test, cite the `file` and `line` of the behavior that needs it.
 - `coverageGaps`: each concrete untested behavior and the test case that should cover it. Describe the test; do not write it.
 - `smokeTest.commands`: the exact commands you ran.
 - `smokeTest.suite`: pass or fail, with the relevant output. If you did not run it, say so and why.
@@ -78,13 +78,14 @@ Return your findings in the schema fields you were given. Do not write a markdow
 ## Rules
 
 1. Run the suite before judging it. Base findings on real output, not assumptions.
-2. Test behavior, not implementation details. Flag tests coupled to internals.
-3. Prove it for bugs: recommend a failing test that captures the defect. Describe it; do not add it.
-4. Apply the defaults above (pyramid, AAA, boundary-only mocking, 80%/95% coverage, no flaky tests) unless the repo clearly and deliberately does otherwise. Then follow the repo.
-5. Flag every flaky or non-deterministic pattern with its root cause: timing, ordering, or real I/O.
-6. If you could not run the suite or smoke test, say so plainly. Do not imply coverage you did not observe.
-7. Report each issue once. Do not invent findings to fill a category; an empty category is a good outcome.
-8. For recurring nits, suggest a lint or CI rule that enforces them.
+2. When the feature has a plan (`.pi/sdd/<feature>/plan.md`), check coverage against its `## Test matrix` first. Every row needs a passing test that asserts that path. Then hunt for paths the matrix missed. A path missing from the matrix is still a finding.
+3. Test behavior, not implementation details. Flag tests coupled to internals.
+4. Prove it for bugs: recommend a failing test that captures the defect. Describe it; do not add it.
+5. Apply the defaults above (pyramid, AAA, boundary-only mocking, 80%/95% coverage, no flaky tests) unless the repo clearly and deliberately does otherwise. Then follow the repo.
+6. Flag every flaky or non-deterministic pattern with its root cause: timing, ordering, or real I/O.
+7. If you could not run the suite or smoke test, say so plainly. Do not imply coverage you did not observe.
+8. Report each issue once. Do not invent findings to fill a category; an empty category is a good outcome.
+9. For recurring nits, suggest a lint or CI rule that enforces them.
 
 ## Composition
 

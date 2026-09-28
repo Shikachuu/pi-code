@@ -22,6 +22,8 @@ Work in this order:
 2. List the information gaps and technical decisions you cannot infer from these inputs or the repo. Resolve each one with the ask_user tool: batch up to 4 questions per call, 2-4 options each, recommended option first, and multiSelect true when several options can apply together. Repeat until nothing is open.
 3. Find the validation pipeline: mise tasks, package scripts, Makefile targets, CI workflows, test runners. If none exists or it is ambiguous, propose options with ask_user.
 4. Write the plan in this format. Every acceptance criterion must be checkable by the validation pipeline or a stated manual step.
+   - Fill "## Test matrix" from the code you read: one row for every success path, every returned error string, every early return and every edge case (empty, missing, malformed, aborted input) of each function or tool you change. The review gate checks coverage against this matrix, so a path you leave out is found in review instead.
+   - Fill "## Risky operations" with every destructive or mutating operation the change adds (delete, remove, push, overwrite, reset) and how it is gated, such as a confirmation or a refusal without UI. Write "- None" only when there is none.
 
 # Plan: <Feature title>
 
@@ -34,6 +36,10 @@ Work in this order:
 - [ ] 1. <task>
 ## Acceptance criteria
 - <observable, testable criterion>
+## Test matrix
+- `path/to/file:symbol` - <success, error or edge path> -> <test that covers it>
+## Risky operations
+- <destructive or mutating operation> - <how it is gated>, or `- None`
 ## Validation pipeline
 - `<command>` - <what it proves>
 ## Risks

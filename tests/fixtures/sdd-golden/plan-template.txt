@@ -9,6 +9,10 @@
 - [ ] 1. <task>
 ## Acceptance criteria
 - <observable, testable criterion>
+## Test matrix
+- `path/to/file:symbol` - <success, error or edge path> -> <test that covers it>
+## Risky operations
+- <destructive or mutating operation> - <how it is gated>, or `- None`
 ## Validation pipeline
 - `<command>` - <what it proves>
 ## Risks

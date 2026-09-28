@@ -12,6 +12,10 @@ Implement feature "phone" by following its plan.
 - [ ] 1. <task>
 ## Acceptance criteria
 - <observable, testable criterion>
+## Test matrix
+- `path/to/file:symbol` - <success, error or edge path> -> <test that covers it>
+## Risky operations
+- <destructive or mutating operation> - <how it is gated>, or `- None`
 ## Validation pipeline
 - `<command>` - <what it proves>
 ## Risks
@@ -20,10 +24,22 @@ Implement feature "phone" by following its plan.
 
 Reference files (read them when you need detail): .pi/sdd/phone/spec.md, .pi/sdd/phone/research-1.md
 
+The review gate runs three read-only agents (code-reviewer, test-engineer, comment-auditor) with the rubric below. Any critical or important finding blocks the feature, so write the code to pass it the first time.
+
+<review-rubric>
+## code-reviewer
+
+### Severity
+
+- `critical`: must fix before merge.
+</review-rubric>
+
 Rules:
 - Do the tasks in order. After finishing each task, tick its checkbox in .pi/sdd/phone/plan.md with the edit tool.
+- Write a test for every row of the plan's "Test matrix" as you implement the code it covers, and gate every item in "Risky operations" the way the plan says.
 - If a task is blocked or the plan is wrong, stop and ask with ask_user rather than guessing.
 - When every task is done, run each command in the validation pipeline and check every acceptance criterion.
-- Then call sdd_verify with feature "phone". It runs three read-only review agents over the branch scope and returns their report.
-- On REQUEST CHANGES, fix every critical issue and every must-kill item the report lists, then call sdd_verify again. Repeat until it approves.
+- Before the first sdd_verify, and again before every later one, review your whole diff (`git diff main...HEAD` plus uncommitted changes) against each rubric section. Confirm that every Test matrix row has a passing test that asserts it, every returned error string and early return is tested, every Risky operation is gated, and every comment in the diff clears the comment-auditor keep list. Fix what fails, then re-run the validation pipeline.
+- Then call sdd_verify with feature "phone". It runs the three review agents over the branch scope and returns their report.
+- On REQUEST CHANGES, treat each finding as one instance of its category. For every category, search the whole diff for other instances of the same problem and fix all of them, not only the cited file:line. Re-run the validation pipeline, then call sdd_verify again. Repeat until it approves.
 - Finish by calling sdd_complete with feature "phone" and one result per acceptance criterion: pass or fail, with evidence. sdd_complete refuses to close the feature until verification approves.

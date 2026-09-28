@@ -7,6 +7,14 @@ import { Type } from 'typebox'
 import { formatAnswers, interview, type Question } from '../ask-user/interview.ts'
 import { reviewDocument, showDocument } from '../ask-user/review.ts'
 import { registerVerifyDocRenderer, runVerification } from '../verification/index.ts'
+import {
+  appendFindings,
+  fixInstructions,
+  lessonsText,
+  markLessons,
+  priorFindings,
+  recurringSinceLessons,
+} from './ledger.ts'
 import { memoryBlock } from './memory.ts'
 import {
   implementPrompt,
@@ -14,6 +22,7 @@ import {
   type ResearchReport,
   renderResearch,
   replaceSection,
+  reviewRubric,
   validatePlan,
 } from './prompts.ts'
 import { runSdd, type WorkflowRunner } from './runner.ts'
@@ -242,6 +251,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       plan: planDoc,
       planPath: docPath(ctx.cwd, slug, 'plan.md'),
       docs: docs.filter((d) => existsSync(d)),
+      rubric: reviewRubric(),
     })
     const model = ctx.model && { provider: ctx.model.provider, id: ctx.model.id }
     await handoff(ctx, { kind: 'implement', slug, model, thinking: pi.getThinkingLevel() }, prompt)
@@ -432,7 +442,9 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       }
       setPhase(ctx.cwd, state.slug, 'done')
       setVerifyRounds(ctx.cwd, state.slug, 0)
-      return text('All criteria pass and verification approved; the feature is done.')
+      const { recurring, through } = recurringSinceLessons(ctx.cwd, state.slug)
+      if (through) markLessons(ctx.cwd, state.slug, through)
+      return text(`All criteria pass and verification approved; the feature is done.${lessonsText(recurring)}`)
     },
   })
 
@@ -461,7 +473,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
 
       let result
       try {
-        result = await runVerification(pi, ctx, { run })
+        result = await runVerification(pi, ctx, { run, prior: priorFindings(ctx.cwd, state.slug) })
       } catch (error) {
         return text(`Verification did not finish: ${(error as Error).message}`)
       }
@@ -474,6 +486,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       }
 
       record(result.verdict, result.markdown)
+      appendFindings(ctx.cwd, state.slug, { verdict: result.verdict, findings: result.findings })
       if (result.verdict === 'APPROVE') {
         setPhase(ctx.cwd, state.slug, 'verifying')
         setVerifyRounds(ctx.cwd, state.slug, 0)
@@ -494,7 +507,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
           )
       }
       return text(
-        `Verification: REQUEST CHANGES (round ${rounds}). Fix every critical issue and every must-kill item in the report below, then call sdd_verify again.\n\n${result.markdown}`,
+        `Verification: REQUEST CHANGES (round ${rounds}). Fix every critical issue and every must-kill item in the report below.\n\n${fixInstructions(result.findings)}Then re-run the validation pipeline and call sdd_verify again.\n\n${result.markdown}`,
       )
     },
   })

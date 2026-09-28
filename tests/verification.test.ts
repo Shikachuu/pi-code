@@ -233,11 +233,20 @@ test('mergeFindings dedupes at file:line, keeps the higher severity, and attribu
   const r = reports({
     codeReviewer: {
       ...must(reports().codeReviewer, 'code reviewer'),
-      findings: [{ severity: 'nit', file: 'a.ts', line: 10, issue: 'naming', fix: '' }],
+      findings: [{ severity: 'nit', category: 'test-category', file: 'a.ts', line: 10, issue: 'naming', fix: '' }],
     },
     testEngineer: {
       ...must(reports().testEngineer, 'test engineer'),
-      findings: [{ severity: 'important', file: 'a.ts', line: 10, issue: 'no test', fix: 'add a test' }],
+      findings: [
+        {
+          severity: 'important',
+          category: 'test-category',
+          file: 'a.ts',
+          line: 10,
+          issue: 'no test',
+          fix: 'add a test',
+        },
+      ],
     },
     commentAuditor: {
       ...must(reports().commentAuditor, 'comment auditor'),
@@ -259,11 +268,11 @@ test('mergeFindings appends distinct issue text once and skips duplicates', () =
   const r = reports({
     codeReviewer: {
       ...must(reports().codeReviewer, 'code reviewer'),
-      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'same', fix: '' }],
+      findings: [{ severity: 'nit', category: 'test-category', file: 'a.ts', line: 1, issue: 'same', fix: '' }],
     },
     testEngineer: {
       ...must(reports().testEngineer, 'test engineer'),
-      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'same', fix: '' }],
+      findings: [{ severity: 'nit', category: 'test-category', file: 'a.ts', line: 1, issue: 'same', fix: '' }],
     },
   })
   expect(must(mergeFindings(r)[0], 'merged finding').issue).toBe('same')
@@ -273,11 +282,11 @@ test('mergeFindings joins two distinct non-empty fixes', () => {
   const r = reports({
     codeReviewer: {
       ...must(reports().codeReviewer, 'code reviewer'),
-      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'x', fix: 'fix one' }],
+      findings: [{ severity: 'nit', category: 'test-category', file: 'a.ts', line: 1, issue: 'x', fix: 'fix one' }],
     },
     testEngineer: {
       ...must(reports().testEngineer, 'test engineer'),
-      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'x', fix: 'fix two' }],
+      findings: [{ severity: 'nit', category: 'test-category', file: 'a.ts', line: 1, issue: 'x', fix: 'fix two' }],
     },
   })
   expect(must(mergeFindings(r)[0], 'merged finding').fix).toBe('fix one; fix two')
@@ -297,7 +306,14 @@ test('verdict is REQUEST CHANGES when only test-engineer or comment-auditor requ
 })
 
 test('renderSummary labels a finding flagged by all three agents as [all]', () => {
-  const finding = (issue: string) => ({ severity: 'nit' as const, file: 'a.ts', line: 5, issue, fix: '' })
+  const finding = (issue: string) => ({
+    severity: 'nit' as const,
+    category: 'test-category',
+    file: 'a.ts',
+    line: 5,
+    issue,
+    fix: '',
+  })
   const md = renderSummary(
     baseScope(),
     reports({
@@ -309,7 +325,7 @@ test('renderSummary labels a finding flagged by all three agents as [all]', () =
       },
     }),
   )
-  expect(md).toMatch(/### Nits\n- \[all\] a\.ts:5 x; y; z/)
+  expect(md).toMatch(/### Nits\n- \[all\] \(test-category\) a\.ts:5 x; y; z/)
 })
 
 test('comment-auditor categories map to severities', () => {
@@ -328,15 +344,100 @@ test('comment-auditor categories map to severities', () => {
   expect(bySev['c.ts']).toBe('nit')
 })
 
+test('comment-auditor buckets become the category of their findings', () => {
+  const r = reports({
+    commentAuditor: {
+      ...must(reports().commentAuditor, 'comment auditor'),
+      correctness: [{ file: 'a.ts', line: 1, issue: 'unjustified ts-ignore' }],
+      mustKill: [{ file: 'b.ts', line: 2, issue: 'narration' }],
+      nits: [{ file: 'c.ts', line: 3, issue: 'could tighten' }],
+    },
+  })
+  const byFile = Object.fromEntries(mergeFindings(r).map((f) => [f.file, f.category]))
+  expect(byFile).toEqual({ 'a.ts': 'comment-correctness', 'b.ts': 'comment-must-kill', 'c.ts': 'comment-nit' })
+})
+
+test('mergeFindings keeps the first category when agents flag the same line', () => {
+  const [merged] = mergeFindings(
+    reports({
+      codeReviewer: {
+        ...must(reports().codeReviewer, 'code reviewer'),
+        findings: [{ severity: 'nit', category: 'naming', file: 'a.ts', line: 1, issue: 'x', fix: '' }],
+      },
+      testEngineer: {
+        ...must(reports().testEngineer, 'test engineer'),
+        findings: [
+          { severity: 'important', category: 'untested-error-path', file: 'a.ts', line: 1, issue: 'y', fix: '' },
+        ],
+      },
+    }),
+  )
+  expect(merged?.category).toBe('naming')
+  expect(merged?.severity).toBe('important')
+})
+
+test('verifyArgs adds prior findings only to the agent that raised them', () => {
+  const scope = baseScope()
+  const plain = verifyArgs(scope)
+  expect(verifyArgs(scope, [])).toEqual(plain)
+  for (const args of Object.values(plain)) expect(args.prompt).not.toContain('<prior-findings>')
+
+  const args = verifyArgs(scope, [
+    {
+      severity: 'critical',
+      category: 'null-deref',
+      file: 'a.ts',
+      line: 1,
+      issue: 'null deref',
+      fix: '',
+      agents: ['code-reviewer'],
+    },
+    {
+      severity: 'important',
+      category: 'comment-must-kill',
+      file: 'b.ts',
+      line: 2,
+      issue: 'narration',
+      fix: '',
+      agents: ['comment-auditor'],
+    },
+  ])
+  expect(args.codeReviewer.prompt).toContain(
+    '<prior-findings>\n- [critical] (null-deref) a.ts:1 null deref\n</prior-findings>',
+  )
+  expect(args.codeReviewer.prompt).toMatch(/Review the full scope as usual/)
+  expect(args.commentAuditor.prompt).toContain('- [important] (comment-must-kill) b.ts:2 narration')
+  expect(args.commentAuditor.prompt).not.toContain('a.ts:1')
+  expect(args.testEngineer.prompt).toBe(plain.testEngineer.prompt)
+})
+
 test('verdict is APPROVE only with no critical/important findings, every agent reporting and no agent requesting changes', () => {
   expect(verdict(reports(), [])).toBe('APPROVE')
   expect(
     verdict(reports(), [
-      { severity: 'important', file: 'a.ts', line: 1, issue: 'x', fix: '', agents: ['code-reviewer'] },
+      {
+        severity: 'important',
+        category: 'test-category',
+        file: 'a.ts',
+        line: 1,
+        issue: 'x',
+        fix: '',
+        agents: ['code-reviewer'],
+      },
     ]),
   ).toBe('REQUEST CHANGES')
   expect(
-    verdict(reports(), [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'x', fix: '', agents: ['code-reviewer'] }]),
+    verdict(reports(), [
+      {
+        severity: 'nit',
+        category: 'test-category',
+        file: 'a.ts',
+        line: 1,
+        issue: 'x',
+        fix: '',
+        agents: ['code-reviewer'],
+      },
+    ]),
   ).toBe('APPROVE')
   expect(verdict(reports({ testEngineer: null }), [])).toBe('REQUEST CHANGES')
   expect(
@@ -403,7 +504,9 @@ test('renderSummary renders finding arrows, blocked smoke tests and audit arrows
     reports({
       codeReviewer: {
         ...must(reports().codeReviewer, 'code reviewer'),
-        findings: [{ severity: 'critical', file: 'a.ts', line: 3, issue: 'bad', fix: 'fix it' }],
+        findings: [
+          { severity: 'critical', category: 'test-category', file: 'a.ts', line: 3, issue: 'bad', fix: 'fix it' },
+        ],
       },
       testEngineer: {
         ...must(reports().testEngineer, 'test engineer'),
@@ -416,7 +519,7 @@ test('renderSummary renders finding arrows, blocked smoke tests and audit arrows
       },
     }),
   )
-  expect(md).toMatch(/### Critical\n- \[code-reviewer\] a\.ts:3 bad -> fix it/)
+  expect(md).toMatch(/### Critical\n- \[code-reviewer\] \(test-category\) a\.ts:3 bad -> fix it/)
   expect(md).toMatch(/- Commands: none\n- Suite: none\n- Manual: none\n- Blocked: network/)
   expect(md).toMatch(/\*\*MUST KILL\*\*\n- b\.ts:2 narration -> delete/)
   expect(md).toMatch(/\*\*Kept\*\*\n- c\.ts:1 good - keep/)
@@ -428,12 +531,14 @@ test('renderSummary renders every populated list under its own heading', () => {
     reports({
       codeReviewer: {
         ...must(reports().codeReviewer, 'code reviewer'),
-        findings: [{ severity: 'important', file: 'i.ts', line: 4, issue: 'missing', fix: 'add it' }],
+        findings: [
+          { severity: 'important', category: 'test-category', file: 'i.ts', line: 4, issue: 'missing', fix: 'add it' },
+        ],
       },
       testEngineer: {
         ...must(reports().testEngineer, 'test engineer'),
         coverageGaps: ['gap one', 'gap two'],
-        findings: [{ severity: 'nit', file: 'n.ts', line: 5, issue: 'tidy', fix: '' }],
+        findings: [{ severity: 'nit', category: 'test-category', file: 'n.ts', line: 5, issue: 'tidy', fix: '' }],
       },
       commentAuditor: {
         ...must(reports().commentAuditor, 'comment auditor'),
@@ -444,8 +549,8 @@ test('renderSummary renders every populated list under its own heading', () => {
       },
     }),
   )
-  expect(md).toMatch(/### Important\n- \[code-reviewer\] i\.ts:4 missing -> add it/)
-  expect(md).toMatch(/### Nits\n- \[test-engineer\] n\.ts:5 tidy/)
+  expect(md).toMatch(/### Important\n- \[code-reviewer\] \(test-category\) i\.ts:4 missing -> add it/)
+  expect(md).toMatch(/### Nits\n- \[test-engineer\] \(test-category\) n\.ts:5 tidy/)
   expect(md).toMatch(/### Coverage Gaps \(from test-engineer\)\n- gap one\n- gap two/)
   expect(md).toMatch(/\*\*MUST KILL\*\*\n- m\.ts:2 narration -> delete/)
   expect(md).toMatch(/\*\*Correctness\*\*\n- c\.ts:1 wrong -> fix/)

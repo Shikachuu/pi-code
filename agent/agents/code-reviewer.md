@@ -70,7 +70,7 @@ Return your findings in the schema fields you were given. Do not write a markdow
 
 - `verdict`: `REQUEST CHANGES` when any finding is `critical` or `important`. `APPROVE` when findings are only nits, or none.
 - `overview`: 1-2 sentences summarizing the change and your overall assessment.
-- `findings`: one entry per issue with `severity`, `file`, `line`, `issue`, and `fix`. For a nit, `fix` names the linter or formatter rule that would enforce it, when one exists.
+- `findings`: one entry per issue with `severity`, `category`, `file`, `line`, `issue`, and `fix`. `category` is a short kebab-case slug for the kind of problem, such as `untested-error-path`, `ungated-destructive-op` or `missing-input-validation`. Give every finding of the same kind the same slug, and reuse a slug from `<prior-findings>` when one fits. For a nit, `fix` names the linter or formatter rule that would enforce it, when one exists.
 - `verificationStory`: `testsReviewed`, `buildVerified`, and `securityChecked`. Each starts with yes or no, followed by what you observed or ran.
 
 ## Rules
