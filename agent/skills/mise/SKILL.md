@@ -16,13 +16,13 @@ reference says so.
 
 Route to one reference instead of loading everything.
 
-| The task / symptom | Load |
-|---|---|
-| "Is tool X in mise?", picking a backend, prefix syntax | `references/registry.md` |
-| Which file wins, precedence, profiles, `[tools]` value forms | `references/config.md` |
-| Writing tasks, task args, file tasks, `#MISE` headers | `references/tasks.md` |
-| Env vars, dotenv, secrets, hooks, migrating off direnv | `references/env.md` |
-| Lockfile flags, reproducible installs, the trust model | `references/lockfile-trust.md` |
+| The task / symptom                                           | Load                           |
+| ------------------------------------------------------------ | ------------------------------ |
+| "Is tool X in mise?", picking a backend, prefix syntax       | `references/registry.md`       |
+| Which file wins, precedence, profiles, `[tools]` value forms | `references/config.md`         |
+| Writing tasks, task args, file tasks, `#MISE` headers        | `references/tasks.md`          |
+| Env vars, dotenv, secrets, hooks, migrating off direnv       | `references/env.md`            |
+| Lockfile flags, reproducible installs, the trust model       | `references/lockfile-trust.md` |
 
 ## Core workflow
 
@@ -65,7 +65,7 @@ which version wins. Use `mise.<env>.toml` for variation instead.
 - **Pin the major, e.g. `node = "26"`.** Never `latest` or `*` in a repo config; `latest` is fine
   in a personal global config. The repo pin states intent, `mise.lock` states the build.
 - **Write the bare shorthand** whenever `mise registry <name>` resolves it. A bare name uses the
-  registry's *first* backend, so only write it when that is the backend you want.
+  registry's _first_ backend, so only write it when that is the backend you want.
 - **When you need an explicit prefix, prefer** `core` > `aqua` > `github` > `npm`/`cargo`/`pipx`/
   `go`/`gem`. Avoid `asdf`, whose plugins run arbitrary shell at install time, wherever an aqua
   recipe exists. `aqua` verifies checksums and signatures; that is why it outranks the rest.
@@ -82,7 +82,7 @@ calls to GitHub or aqua.
 
 **Do not add `[settings] lockfile = true` to a repo config.** Measured on 2026.8.12: once
 `mise.lock` exists, `mise install` maintains it with no setting anywhere, and a committed lockfile
-always exists for whoever clones. The setting only makes mise *create* a lockfile that is not there
+always exists for whoever clones. The setting only makes mise _create_ a lockfile that is not there
 yet, and it costs the config its trust-free status. Leave it out.
 
 - `mise lock --bump` moves the lockfile. `mise upgrade --bump` moves the pin in `mise.toml`.
@@ -145,12 +145,12 @@ both tools hook the shell and fight over PATH. `references/env.md` has the migra
 
 Measured on 2026.8.12. What a config contains decides whether mise prompts:
 
-| Config contains | Trust needed |
-|---|---|
-| `[tools]` with string or list-of-strings values | no |
-| `[tools]` with an inline table or a `[tools.x]` section | **yes** |
-| `[tasks]` without templates or tool options | no |
-| `[env]`, `[settings]`, `[vars]`, `[hooks]` | **yes** |
+| Config contains                                         | Trust needed |
+| ------------------------------------------------------- | ------------ |
+| `[tools]` with string or list-of-strings values         | no           |
+| `[tools]` with an inline table or a `[tools.x]` section | **yes**      |
+| `[tasks]` without templates or tool options             | no           |
+| `[env]`, `[settings]`, `[vars]`, `[hooks]`              | **yes**      |
 
 So `node = "26"` costs nothing, but `go = { version = "1.21", os = ["linux"] }` costs a prompt.
 That is the practical reason to keep tool options out of a config until a tool actually needs one,
@@ -166,14 +166,14 @@ clone and say so in the README.
 
 mise still accepts most of these and only warns, so they look correct until they are removed.
 
-| Do not write | Write instead |
-|---|---|
-| `[alias]` | `[tool_alias]` for versions, `[shell_alias]` for shell aliases |
-| top-level `env_file`, `dotenv`, `env_path` | `[env] _.file`, `[env] _.path` |
-| `_.venv` | `_.python.venv = { path = ".venv", create = true }` |
-| `{{ arg(...) }}`, `option()`, `flag()` in `run` | the `usage` field, or `#USAGE` in a file task |
-| `ubi:owner/repo` | `aqua:owner/repo` or `github:owner/repo` |
-| `mise init` | `mise generate config`, or `mise use <tool>@<ver>` |
+| Do not write                                    | Write instead                                                  |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| `[alias]`                                       | `[tool_alias]` for versions, `[shell_alias]` for shell aliases |
+| top-level `env_file`, `dotenv`, `env_path`      | `[env] _.file`, `[env] _.path`                                 |
+| `_.venv`                                        | `_.python.venv = { path = ".venv", create = true }`            |
+| `{{ arg(...) }}`, `option()`, `flag()` in `run` | the `usage` field, or `#USAGE` in a file task                  |
+| `ubi:owner/repo`                                | `aqua:owner/repo` or `github:owner/repo`                       |
+| `mise init`                                     | `mise generate config`, or `mise use <tool>@<ver>`             |
 
 `mise init` does not exist. Do not suggest it.
 

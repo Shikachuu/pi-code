@@ -34,31 +34,31 @@ Use the printed `pin:` value for `version`. (Under the hood:
 
 Source paths only - resolve the version with `scripts/tofu-module-latest.sh <source>`.
 
-| Concern | Module source |
-|---|---|
-| VPC, subnets, NAT, routing | `terraform-aws-modules/vpc/aws` |
-| Security group | `terraform-aws-modules/security-group/aws` |
-| ALB / NLB + listeners/target groups | `terraform-aws-modules/alb/aws` |
-| RDS instance | `terraform-aws-modules/rds/aws` |
-| Aurora cluster | `terraform-aws-modules/rds-aurora/aws` |
-| Kubernetes (EKS) | `terraform-aws-modules/eks/aws` |
-| Containers (ECS/Fargate) | `terraform-aws-modules/ecs/aws` |
-| Object storage (S3) | `terraform-aws-modules/s3-bucket/aws` |
-| Serverless functions | `terraform-aws-modules/lambda/aws` |
-| IAM roles/policies/IRSA | `terraform-aws-modules/iam/aws//modules/<sub>` |
-| CDN | `terraform-aws-modules/cloudfront/aws` |
-| TLS certs | `terraform-aws-modules/acm/aws` |
-| Redis/Memcached | `terraform-aws-modules/elasticache/aws` |
-| Secrets | `terraform-aws-modules/secrets-manager/aws` |
-| Encryption keys | `terraform-aws-modules/kms/aws` |
-| Queues | `terraform-aws-modules/sqs/aws` |
-| Pub/sub | `terraform-aws-modules/sns/aws` |
-| NoSQL table | `terraform-aws-modules/dynamodb-table/aws` |
-| Container registry | `terraform-aws-modules/ecr/aws` |
-| DNS | `terraform-aws-modules/route53/aws` |
-| EC2 ASG / launch template | `terraform-aws-modules/autoscaling/aws` |
-| Event routing | `terraform-aws-modules/eventbridge/aws` |
-| HTTP/WS API gateway | `terraform-aws-modules/apigateway-v2/aws` |
+| Concern                             | Module source                                  |
+| ----------------------------------- | ---------------------------------------------- |
+| VPC, subnets, NAT, routing          | `terraform-aws-modules/vpc/aws`                |
+| Security group                      | `terraform-aws-modules/security-group/aws`     |
+| ALB / NLB + listeners/target groups | `terraform-aws-modules/alb/aws`                |
+| RDS instance                        | `terraform-aws-modules/rds/aws`                |
+| Aurora cluster                      | `terraform-aws-modules/rds-aurora/aws`         |
+| Kubernetes (EKS)                    | `terraform-aws-modules/eks/aws`                |
+| Containers (ECS/Fargate)            | `terraform-aws-modules/ecs/aws`                |
+| Object storage (S3)                 | `terraform-aws-modules/s3-bucket/aws`          |
+| Serverless functions                | `terraform-aws-modules/lambda/aws`             |
+| IAM roles/policies/IRSA             | `terraform-aws-modules/iam/aws//modules/<sub>` |
+| CDN                                 | `terraform-aws-modules/cloudfront/aws`         |
+| TLS certs                           | `terraform-aws-modules/acm/aws`                |
+| Redis/Memcached                     | `terraform-aws-modules/elasticache/aws`        |
+| Secrets                             | `terraform-aws-modules/secrets-manager/aws`    |
+| Encryption keys                     | `terraform-aws-modules/kms/aws`                |
+| Queues                              | `terraform-aws-modules/sqs/aws`                |
+| Pub/sub                             | `terraform-aws-modules/sns/aws`                |
+| NoSQL table                         | `terraform-aws-modules/dynamodb-table/aws`     |
+| Container registry                  | `terraform-aws-modules/ecr/aws`                |
+| DNS                                 | `terraform-aws-modules/route53/aws`            |
+| EC2 ASG / launch template           | `terraform-aws-modules/autoscaling/aws`        |
+| Event routing                       | `terraform-aws-modules/eventbridge/aws`        |
+| HTTP/WS API gateway                 | `terraform-aws-modules/apigateway-v2/aws`      |
 
 IAM submodules (via `//modules/<name>`): `iam-role`, `iam-policy`, `iam-assumable-role`,
 `iam-role-for-service-accounts` (IRSA), `iam-group`, `iam-user`, `iam-oidc-provider`,
@@ -70,6 +70,7 @@ Every `version` below is a placeholder - fill it from
 `scripts/tofu-module-latest.sh <source>` before use. Do not copy a version literal.
 
 VPC:
+
 ```hcl
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
@@ -88,6 +89,7 @@ module "vpc" {
 ```
 
 Security group (map syntax - no inline ingress/egress on raw resources):
+
 ```hcl
 module "security_group" {
   source  = "terraform-aws-modules/security-group/aws"
@@ -107,6 +109,7 @@ module "security_group" {
 ```
 
 RDS (master password auto-managed via Secrets Manager by default - keeps it out of state):
+
 ```hcl
 module "db" {
   source  = "terraform-aws-modules/rds/aws"
@@ -127,6 +130,7 @@ module "db" {
 ```
 
 ECS (integrated cluster + Fargate service):
+
 ```hcl
 module "ecs" {
   source  = "terraform-aws-modules/ecs/aws"
@@ -149,6 +153,7 @@ module "ecs" {
 ```
 
 S3 bucket:
+
 ```hcl
 module "bucket" {
   source  = "terraform-aws-modules/s3-bucket/aws"
@@ -164,6 +169,7 @@ module "bucket" {
 ```
 
 IAM role (submodule):
+
 ```hcl
 module "iam_role" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role"
@@ -175,6 +181,7 @@ module "iam_role" {
 ```
 
 Git source (only for forks/unreleased/air-gapped - pin a tag, never a branch):
+
 ```hcl
 source = "git::https://github.com/terraform-aws-modules/terraform-aws-vpc.git//.?ref=<tag>"
 ```

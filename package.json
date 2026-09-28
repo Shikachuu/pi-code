@@ -2,8 +2,11 @@
   "name": "ultimate-harness",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22.19.0"
+  "dependencies": {
+    "@huggingface/jinja": "0.5.10",
+    "@quintinshaw/pi-dynamic-workflows": "3.13.0",
+    "pi-hermes-memory": "0.9.9",
+    "pi-web-access": "0.31.0"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.87.0",
@@ -14,10 +17,7 @@
     "typescript": "7.0.2",
     "vitest": "5.0.2"
   },
-  "dependencies": {
-    "@huggingface/jinja": "0.5.10",
-    "@quintinshaw/pi-dynamic-workflows": "3.13.0",
-    "pi-hermes-memory": "0.9.9",
-    "pi-web-access": "0.31.0"
+  "engines": {
+    "node": ">=22.19.0"
   }
 }

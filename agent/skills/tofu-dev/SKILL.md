@@ -27,13 +27,13 @@ Every non-trivial answer follows this shape:
 
 Route to the right reference instead of loading everything:
 
-| The task / symptom | Load |
-|---|---|
-| Layout, naming, tags, variables, IAM, secrets, state, providers | `references/conventions.md` |
-| "Is there a premade module for X?", picking/pinning modules | `references/aws-modules.md` |
-| Writing/running tests, mocks, assertions | `references/testing.md` |
-| Need a resource/module's real attributes before writing | `references/registry-lookup.md` |
-| Security scan findings, IAM/SG/KMS/S3/state hardening | `references/security.md` |
+| The task / symptom                                              | Load                            |
+| --------------------------------------------------------------- | ------------------------------- |
+| Layout, naming, tags, variables, IAM, secrets, state, providers | `references/conventions.md`     |
+| "Is there a premade module for X?", picking/pinning modules     | `references/aws-modules.md`     |
+| Writing/running tests, mocks, assertions                        | `references/testing.md`         |
+| Need a resource/module's real attributes before writing         | `references/registry-lookup.md` |
+| Security scan findings, IAM/SG/KMS/S3/state hardening           | `references/security.md`        |
 
 ## Core workflow
 

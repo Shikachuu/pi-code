@@ -14,11 +14,11 @@ shape. Without it every list-ended report gained a newline.
 
 ## Documented behaviour changes
 
-- `demoteHeadings` is now fence-aware. Lines inside a ``` fence keep their
-  original heading level instead of being demoted. The spec requires this, the
-  old regex did not do it, and no test pinned the old behaviour. A new test in
-  `tests/sdd.test.ts` covers it. An unbalanced fence in agent-authored text (an
-  odd number of ``` lines in a verification report) leaves later headings
+- `demoteHeadings` is now fence-aware. Lines inside a ``fence keep their
+original heading level instead of being demoted. The spec requires this, the
+old regex did not do it, and no test pinned the old behaviour. A new test in
+`tests/sdd.test.ts` covers it. An unbalanced fence in agent-authored text (an
+odd number of`` lines in a verification report) leaves later headings
   un-demoted, exactly as the same fence desynchronizes `sectionBounds`; the two
   stay consistent, but a level-2 heading written this way stays in `plan.md` as a
   sibling of `## Verification` until the next write. A body `# H1` demotes to

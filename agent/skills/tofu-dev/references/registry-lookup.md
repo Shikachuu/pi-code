@@ -37,18 +37,19 @@ that heuristic misses, list docs first and match the exact `name` from the versi
 Base: `https://api.opentofu.org`. Version ids carry a `v` prefix (`v6.53.0`). `{kind}` is
 `resource|datasource|function|guide`; the URL segment is plural (`resources`).
 
-| Path | Returns |
-|---|---|
-| `/registry/docs/providers/{ns}/{name}/index.json` | provider + `.versions[].id` (newest first) |
-| `/registry/docs/providers/{ns}/{name}/{ver}/index.json` | `.docs.resources[]`, `.docs.datasources[]` ({name,title,...}) |
-| `/registry/docs/providers/{ns}/{name}/{ver}/resources/{doc}.md` | one resource doc (markdown) |
-| `/registry/docs/modules/{ns}/{name}/{target}/index.json` | module + `.versions[].id` |
-| `/registry/docs/modules/{ns}/{name}/{target}/{ver}/index.json` | `.variables{}`, `.outputs{}`, `.dependencies[]`, `.resources[]` |
-| `/registry/docs/modules/{ns}/{name}/{target}/{ver}/README.md` | module README |
-| `/registry/docs/search?q=<urlenc>` | search array; each item `.type` in module/provider/resource/datasource, `.link_variables{}` |
-| `/top/providers?limit=N` | top providers by popularity |
+| Path                                                            | Returns                                                                                     |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `/registry/docs/providers/{ns}/{name}/index.json`               | provider + `.versions[].id` (newest first)                                                  |
+| `/registry/docs/providers/{ns}/{name}/{ver}/index.json`         | `.docs.resources[]`, `.docs.datasources[]` ({name,title,...})                               |
+| `/registry/docs/providers/{ns}/{name}/{ver}/resources/{doc}.md` | one resource doc (markdown)                                                                 |
+| `/registry/docs/modules/{ns}/{name}/{target}/index.json`        | module + `.versions[].id`                                                                   |
+| `/registry/docs/modules/{ns}/{name}/{target}/{ver}/index.json`  | `.variables{}`, `.outputs{}`, `.dependencies[]`, `.resources[]`                             |
+| `/registry/docs/modules/{ns}/{name}/{target}/{ver}/README.md`   | module README                                                                               |
+| `/registry/docs/search?q=<urlenc>`                              | search array; each item `.type` in module/provider/resource/datasource, `.link_variables{}` |
+| `/top/providers?limit=N`                                        | top providers by popularity                                                                 |
 
 Examples:
+
 ```sh
 B=https://api.opentofu.org
 curl -s "$B/registry/docs/providers/hashicorp/aws/v6.53.0/index.json" \

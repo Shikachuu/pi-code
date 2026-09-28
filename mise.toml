@@ -32,12 +32,12 @@ run = "npx oxlint --config .oxlintrc.jsonc"
 [tasks.format]
 description = "Format extensions and tests with oxfmt"
 dir = "{{config_root}}"
-run = 'npx oxfmt --write "agent/extensions/**/*.ts" "tests/**/*.ts"'
+run = 'npx oxfmt --write .'
 
 [tasks."format:check"]
 description = "Check formatting of extensions and tests"
 dir = "{{config_root}}"
-run = 'npx oxfmt --check "agent/extensions/**/*.ts" "tests/**/*.ts"'
+run = 'npx oxfmt --check .'
 
 [tasks.snapshot]
 description = "Regenerate test snapshots"

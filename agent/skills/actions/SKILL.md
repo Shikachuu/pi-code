@@ -81,8 +81,8 @@ Extract a repeated **multi-step** sequence (e.g. install runtime -> auth to priv
 -> install deps) into `.github/actions/<name>/action.yml` to kill config and pipeline drift.
 
 - **Never wrap a single step** - that's bloat, not reuse.
-- Composite action = shared *setup steps* in the caller's job context.
-- Reusable workflow = a shared *job* (its own `runs-on`, inputs/outputs).
+- Composite action = shared _setup steps_ in the caller's job context.
+- Reusable workflow = a shared _job_ (its own `runs-on`, inputs/outputs).
 - Caveat: composites don't take `secrets:` the way reusable workflows do; if a shared unit
   needs secrets passed in cleanly, use a reusable workflow.
 
@@ -109,7 +109,7 @@ group key so deploys queue rather than abort.
   the values you template on must come from there.
 
 ```yaml
-run-name: "Tests (PR #${{ github.event.pull_request.number }})"
+run-name: 'Tests (PR #${{ github.event.pull_request.number }})'
 ```
 
 ## Caching: close the gap

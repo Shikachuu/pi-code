@@ -24,7 +24,7 @@ legacy name; write `mise.toml`.
 what you expect. It is the only reliable answer to "which file set this".
 
 `~/.config/mise/config.toml` is the global config. A file at `~/.config/mise.toml` is not the global
-config: it loads as a *project* config for the `$HOME` directory, so `mise use -g` will not write
+config: it loads as a _project_ config for the `$HOME` directory, so `mise use -g` will not write
 to it.
 
 ## Environments
@@ -121,13 +121,13 @@ mise use --remove node
 
 ## Deprecated, do not write
 
-| Do not write | Write instead |
-|---|---|
-| `[alias]` | `[tool_alias]`, `[shell_alias]` |
-| top-level `env_file`, `dotenv`, `env_path` | `[env] _.file`, `[env] _.path` (removal 2027.x) |
-| `_.venv` | `_.python.venv` |
-| `{{ arg() }}`, `option()`, `flag()` in `run` | the `usage` field (removal 2027.5.0) |
-| `ubi:owner/repo` | `aqua:` or `github:` |
+| Do not write                                 | Write instead                                   |
+| -------------------------------------------- | ----------------------------------------------- |
+| `[alias]`                                    | `[tool_alias]`, `[shell_alias]`                 |
+| top-level `env_file`, `dotenv`, `env_path`   | `[env] _.file`, `[env] _.path` (removal 2027.x) |
+| `_.venv`                                     | `_.python.venv`                                 |
+| `{{ arg() }}`, `option()`, `flag()` in `run` | the `usage` field (removal 2027.5.0)            |
+| `ubi:owner/repo`                             | `aqua:` or `github:`                            |
 
 `validate-mise.sh` greps for all five. That grep is the canonical list; keep the two in sync when
 mise deprecates something new.

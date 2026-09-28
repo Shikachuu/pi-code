@@ -127,7 +127,7 @@ Other languages use their own comment character:
 #!/usr/bin/env -S node
 //MISE description="Write a greeting"
 //USAGE arg "<output_file>" help="The file to write"
-const { usage_output_file } = process.env;
+const { usage_output_file } = process.env
 ```
 
 ## Running

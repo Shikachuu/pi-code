@@ -36,23 +36,23 @@ and describe a `packslip` backend that this build does not have.
 
 ## Prefix syntax
 
-| Backend | Example | Notes |
-|---|---|---|
-| core | `core:node` | built in, 14 registry entries: node, python, ruby, go, java, deno, bun, rust, erlang, zig, dotnet, elixir, swift |
-| aqua | `aqua:BurntSushi/ripgrep` | curated, verifies checksums and signatures |
-| github | `github:owner/repo` | release assets |
-| gitlab | `gitlab:user/project` | |
-| forgejo | `forgejo:instance/user/repo` | |
-| npm | `npm:@biomejs/biome` | |
-| cargo | `cargo:ripgrep` | builds from source |
-| pipx | `pipx:black` | |
-| go | `go:github.com/rhysd/actionlint/cmd/actionlint` | full import path |
-| gem | `gem:rubocop` | |
-| http | `http:tool-name` | URL-defined |
-| s3 | `s3://bucket/tool` | |
-| ubi | `ubi:owner/repo[exe=rg]` | deprecated upstream, do not write |
-| vfox | `vfox:mise-plugins/vfox-1password` | plugin, runs shell |
-| asdf | `asdf:mise-plugins/mise-poetry` | legacy plugin, runs arbitrary shell at install |
+| Backend | Example                                         | Notes                                                                                                            |
+| ------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| core    | `core:node`                                     | built in, 14 registry entries: node, python, ruby, go, java, deno, bun, rust, erlang, zig, dotnet, elixir, swift |
+| aqua    | `aqua:BurntSushi/ripgrep`                       | curated, verifies checksums and signatures                                                                       |
+| github  | `github:owner/repo`                             | release assets                                                                                                   |
+| gitlab  | `gitlab:user/project`                           |                                                                                                                  |
+| forgejo | `forgejo:instance/user/repo`                    |                                                                                                                  |
+| npm     | `npm:@biomejs/biome`                            |                                                                                                                  |
+| cargo   | `cargo:ripgrep`                                 | builds from source                                                                                               |
+| pipx    | `pipx:black`                                    |                                                                                                                  |
+| go      | `go:github.com/rhysd/actionlint/cmd/actionlint` | full import path                                                                                                 |
+| gem     | `gem:rubocop`                                   |                                                                                                                  |
+| http    | `http:tool-name`                                | URL-defined                                                                                                      |
+| s3      | `s3://bucket/tool`                              |                                                                                                                  |
+| ubi     | `ubi:owner/repo[exe=rg]`                        | deprecated upstream, do not write                                                                                |
+| vfox    | `vfox:mise-plugins/vfox-1password`              | plugin, runs shell                                                                                               |
+| asdf    | `asdf:mise-plugins/mise-poetry`                 | legacy plugin, runs arbitrary shell at install                                                                   |
 
 ## Preference order
 

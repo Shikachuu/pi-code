@@ -1,9 +1,11 @@
 # Plan: Verification pipeline
 
 ## Summary
+
 Add a `/verify [target]` command that resolves a deterministic git scope in TypeScript, then fans out three read-only agents (code-reviewer, test-engineer, comment-auditor) in one `parallel()` phase via pi-dynamic-workflows. TypeScript then merges their schema-validated reports into the Verification Summary markdown. The three Claude agents are ported as pi-dynamic-workflows agentType definitions in `agent/agents/`. The summary is rendered in the session and injected into LLM context. Report-only. Nothing is persisted and no code is modified.
 
 ## Decisions
+
 - Agent definitions: `agent/agents/{code-reviewer,test-engineer,comment-auditor}.md` as agentType defs - pi-dynamic-workflows loads `getAgentDir()/agents` (agent/ via PI_CODING_AGENT_DIR). Frontmatter binds `disallowedTools` and `thinking`. `.pi/prompts/verification/` would be project-only, non-recursive and exposed as slash commands. This deviates from the spec by user choice.
 - Synthesis: deterministic TS merge and render, no 4th agent - unit-testable and reproducible. Dedupe is by exact `file:line` only.
 - Scope failure: fall back to the uncommitted working tree (`git diff HEAD`) with a visible note in Scope - user choice. A non-git directory is still an error.
@@ -19,6 +21,7 @@ Add a `/verify [target]` command that resolves a deterministic git scope in Type
 - Runner reuse: reuse `runSdd` from `agent/extensions/sdd/runner.ts` for the progress widget, escape-to-stop and model registry wiring. Its API stays unchanged.
 
 ## Changes
+
 - `agent/agents/code-reviewer.md`: frontmatter `name`, `description`, `disallowedTools: edit, write`, `thinking: low`. Body ported from Claude `reviewer.md`: five dimensions, severity rules and rules list. The markdown output template is replaced by "return findings in the schema fields". Orchestration/Composition text is dropped.
 - `agent/agents/test-engineer.md`: same frontmatter pattern, `thinking: low`. Body ported from Claude `test-engineer.md`: five dimensions, smoke testing, and blocked-setup reporting. Its references to the "run skill" are dropped.
 - `agent/agents/comment-auditor.md`: same frontmatter pattern, `thinking: high`. Body ported from Claude `comment-auditor.md`: keep list, suppressions, evidence step, categories, read-only bash rules. The `/no-comments` references are dropped.
@@ -47,6 +50,7 @@ Add a `/verify [target]` command that resolves a deterministic git scope in Type
 - `tests/snapshots/commands.json`, `tests/snapshots/resources.json`: regenerated to include `/verify` and the new extension.
 
 ## Tasks
+
 - [x] 1. Create branch `feat/verification-pipeline` (current branch is `feat/sdd`; never commit on main).
 - [x] 2. Port the three Claude agents to `agent/agents/*.md` with frontmatter `disallowedTools: edit, write` and thinking low/low/high. Bodies instruct returning schema fields and keep every rule from the originals except orchestration and composition text.
 - [x] 3. Implement `scope.ts` (resolveScope for default/range/ref/path/fallback, untracked files, numstat stats, isLarge, formatScope) using `execFileSync("git", ...)`.
@@ -63,6 +67,7 @@ Add a `/verify [target]` command that resolves a deterministic git scope in Type
 - [ ] 9. Manual smoke: in this repo run `pi` and `/verify HEAD~1..HEAD` and confirm the rendered Verification Summary.
 
 ## Acceptance criteria
+
 - `/verify` is registered by `agent/extensions/verification/index.ts` and appears in `tests/snapshots/commands.json` and `resources.json` (checked by `mise run test`).
 - `agent/settings.json` is unchanged and `tests/packages.test.ts` still passes.
 - `resolveScope` returns deterministic file lists and reproduction commands for default, range, ref, path (diff and whole-file) and fallback targets. The fallback carries a note naming the git error. A non-git dir throws (unit tests in `tests/verification.test.ts`).
@@ -77,6 +82,7 @@ Add a `/verify [target]` command that resolves a deterministic git scope in Type
 - Manual: `/verify HEAD~1..HEAD` in pi on this repo renders a Verification Summary with a verdict and all sections.
 
 ## Validation pipeline
+
 - `mise run typecheck` - strict TypeScript over extensions and tests.
 - `mise run test` - node:test suite including `tests/verification.test.ts`, snapshot and packages tests.
 - `mise run snapshot` - regenerate command and resource snapshots after adding `/verify` (review the diff).
@@ -84,6 +90,7 @@ Add a `/verify [target]` command that resolves a deterministic git scope in Type
 - Manual: `pi` then `/verify HEAD~1..HEAD` in this repo - end-to-end run against real models.
 
 ## Risks
+
 - Agent-def `thinking` may not override a thinking suffix baked into the tier spec (`medium` = `opus:minimal`). The tests only assert the option is passed, so confirm the effective level in the manual run.
 - `disallowedTools` blocks edit and write but not bash. test-engineer must run tests, so read-only rests on the prompt plus the existing protected-paths guard. Test runs can still create artifacts.
 - Exact `file:line` dedupe misses semantically identical findings on different lines. The summary can show near-duplicates.
@@ -92,6 +99,7 @@ Add a `/verify [target]` command that resolves a deterministic git scope in Type
 - The working-tree fallback on a typo'd range can hide user error. It stays visible only via the Scope note.
 
 ## Out of scope
+
 - Blocking gates: commit hooks, CI integration, auto-fix, and a `/no-comments` port.
 - Persisting findings, creating issues, or writing reports to disk.
 - PR refs as targets.

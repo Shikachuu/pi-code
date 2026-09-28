@@ -84,14 +84,14 @@ add direnv to a repo that does not already have it.
 
 For a repo that already uses direnv, migrate:
 
-| direnv | mise |
-|---|---|
-| `export NODE_ENV=development` | `[env] NODE_ENV = "development"` |
-| `dotenv .env` | `[env] _.file = ".env"` |
-| `PATH_add bin` | `[env] _.path = "bin"` |
-| sourcing a script | `[env] _.source = "./script.sh"` |
-| `layout python` | `[env] _.python.venv = { path = ".venv", create = true }` |
-| `.envrc` shell scripting | `[hooks] enter` |
+| direnv                        | mise                                                      |
+| ----------------------------- | --------------------------------------------------------- |
+| `export NODE_ENV=development` | `[env] NODE_ENV = "development"`                          |
+| `dotenv .env`                 | `[env] _.file = ".env"`                                   |
+| `PATH_add bin`                | `[env] _.path = "bin"`                                    |
+| sourcing a script             | `[env] _.source = "./script.sh"`                          |
+| `layout python`               | `[env] _.python.venv = { path = ".venv", create = true }` |
+| `.envrc` shell scripting      | `[hooks] enter`                                           |
 
 Legacy activation, if you must keep both for a while:
 

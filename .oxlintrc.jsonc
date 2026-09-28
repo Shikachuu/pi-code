@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": {
-    "correctness": "error"
+    "correctness": "error",
   },
   // `plugins` overwrites the default plugin set, so list every plugin we use.
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest", "node"],
@@ -11,7 +11,7 @@
     "import/no-duplicates": "error",
     "import/no-unassigned-import": "error",
     "typescript/no-explicit-any": "error",
-    "typescript/no-unused-vars": "error"
+    "typescript/no-unused-vars": "error",
   },
-  "ignorePatterns": ["node_modules", "dist", ".pi"]
+  "ignorePatterns": ["node_modules", "dist", ".pi"],
 }

@@ -55,17 +55,17 @@ Never hand-edit `mise.lock`. Prefer the lockfile over `mise use --pin`, as mise'
 
 Verified on mise 2026.8.12 by running each variant:
 
-| Config contains | Trust needed |
-|---|---|
-| `[tools]` with string values (`node = "26"`) | no |
-| `[tools]` with list values (`python = ["3.12"]`) | no |
-| `[tools]` with an inline table (`go = { version = "1.21" }`) | **yes** |
-| `[tools.x]` as its own section | **yes** |
-| `[tasks]` without templates or tool options | no |
-| `[env]` | **yes** |
-| `[settings]` | **yes** |
-| `[vars]` | **yes** |
-| `[hooks]` | **yes** |
+| Config contains                                              | Trust needed |
+| ------------------------------------------------------------ | ------------ |
+| `[tools]` with string values (`node = "26"`)                 | no           |
+| `[tools]` with list values (`python = ["3.12"]`)             | no           |
+| `[tools]` with an inline table (`go = { version = "1.21" }`) | **yes**      |
+| `[tools.x]` as its own section                               | **yes**      |
+| `[tasks]` without templates or tool options                  | no           |
+| `[env]`                                                      | **yes**      |
+| `[settings]`                                                 | **yes**      |
+| `[vars]`                                                     | **yes**      |
+| `[hooks]`                                                    | **yes**      |
 
 Confirmed as not requiring trust: `min_version`, top-level `redactions`, a task with its own `env`
 table, and a `mise-tasks/` file task.

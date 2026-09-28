@@ -18,7 +18,7 @@ Key outcomes:
 ### Probe: Exact current output of prompts.ts template literals
 
 - `SPEC_TEMPLATE` is a 9-line string: `"# <Feature title>"` then headings `## Goal`, `## Background`, `## Scope`, `## Non-goals`, `## Expected behaviour`, `## Constraints`, `## Assumptions`, `## Open questions` with no blank lines and no trailing newline.
-  - Evidence: `agent/extensions/sdd/prompts.ts:1-10`, `agent/extensions/sdd/prompts.ts:1` `` # <Feature title> ``, `agent/extensions/sdd/prompts.ts:10` `` ## Open questions` `` (backtick closes, no trailing `\n`)
+  - Evidence: `agent/extensions/sdd/prompts.ts:1-10`, `agent/extensions/sdd/prompts.ts:1` `# <Feature title>`, `agent/extensions/sdd/prompts.ts:10` `` ## Open questions` `` (backtick closes, no trailing `\n`)
 - `PLAN_TEMPLATE` is `"# Plan: <Feature title>"` then `## Summary`, `## Decisions`, `- <decision>: <chosen option> - <why>`, `## Changes`, `- \`path/to/file\`: <what changes>`, `## Tasks`, `- [ ] 1. <task>`, `## Acceptance criteria`, `- <observable, testable criterion>`, `## Validation pipeline`, `- \`<command>\` - <what it proves>`, `## Risks`, `## Out of scope`. Backticks are escaped in source. No trailing newline.
   - Evidence: `agent/extensions/sdd/prompts.ts:12-25`, `agent/extensions/sdd/prompts.ts:16`, `agent/extensions/sdd/prompts.ts:21`
 - `planPrompt` emits: `You are planning the implementation of feature "<slug>". Its files live in <dir>.` then blank line, `<spec>` block, blank, `<discovery>` block (fallback `No discovery was run.`), then if research non-empty `"\n"` + research blocks joined by blank line + `"\n"`, then if memory non-empty `"\n"` + memory + `"\n"`, then a trailing `"\n"` then the numbered `Work in this order:` block, blank line, `PLAN_TEMPLATE`, blank line, and step 5.
@@ -42,7 +42,7 @@ Key outcomes:
   - Evidence: `agent/extensions/sdd/prompts.ts:65-69`
 - `replaceSection`: builds `block = ['## ' + heading, '', body, '']`; if the heading is missing it APPENDS `[...lines, '', ...block]` (after `trimEnd` on the whole doc); if present it splices the block between `bounds.start` and `bounds.end`, then `.trimEnd() + '\n'`. An existing trailing `## Next` section is preserved after the block.
   - Evidence: `agent/extensions/sdd/prompts.ts:72-78`
-- `validatePlan` returns human-readable error strings using `readSection`, so it inherits case-insensitive matching and fence rules. Three checks: `## Tasks` needs `/^\s*- \[[ x]\]/m`, `## Acceptance criteria` needs `/^\s*[-*\d]/m`, `## Validation pipeline` needs `` /`[^`]+`/ ``. Missing section and failed regex push the same message.
+- `validatePlan` returns human-readable error strings using `readSection`, so it inherits case-insensitive matching and fence rules. Three checks: `## Tasks` needs `/^\s*- \[[ x]\]/m`, `## Acceptance criteria` needs `/^\s*[-*\d]/m`, `## Validation pipeline` needs ``/`[^`]+`/``. Missing section and failed regex push the same message.
   - Evidence: `agent/extensions/sdd/prompts.ts:80-89`
 - Call sites in `sdd/index.ts`: `validatePlan` at `index.ts:367`; `replaceSection(planDoc, 'Results', ...)` at `index.ts:410`; `replaceSection(planDoc, 'Verification', ...)` plus `demoteHeadings` at `index.ts:456`. `demoteHeadings` is imported at `index.ts:12` and used only at `index.ts:456`.
   - Evidence: `agent/extensions/sdd/index.ts:12,17,18`, `agent/extensions/sdd/index.ts:367`, `agent/extensions/sdd/index.ts:408-411`, `agent/extensions/sdd/index.ts:456`
@@ -90,7 +90,7 @@ Key outcomes:
 - `renderResearch` tests pin heading text exactly and one blank-line-after-heading pattern. This is the most whitespace-fragile assertion in the suite.
   - Evidence: `tests/sdd.test.ts:184-210` (`toContain` over the seven `##` headings), `:208` (`/## Open questions\n\n- None/`), `:209` (dedup count on `'- https://a'`)
 - Section leniency is pinned twice: fenced code blocks containing `#`/`##` lines are ignored, and heading match is case-insensitive.
-  - Evidence: `tests/sdd.test.ts:1164-1172` (test `plan sections ignore headings inside code fences`, injecting ```` ```bash\n# run everything\nmise run test\n``` ````), `:1171`, `:1172`, `:47-57` (`VALID_PLAN` fixture)
+  - Evidence: `tests/sdd.test.ts:1164-1172` (test `plan sections ignore headings inside code fences`, injecting ` ```bash\n# run everything\nmise run test\n``` `), `:1171`, `:1172`, `:47-57` (`VALID_PLAN` fixture)
 - `tests/system-prompt.test.ts` contains no prompt-text assertions at all.
   - Evidence: `tests/system-prompt.test.ts` is 25 lines; only assertion is `tests/system-prompt.test.ts:20` `expect(session.systemPrompt.length).toBeGreaterThan(0)`
 - Other `toContain` assertions in `sdd.test.ts` are unrelated to prompt/markdown templates.

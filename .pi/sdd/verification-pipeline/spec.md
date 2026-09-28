@@ -7,6 +7,7 @@ Enable on-demand parallel verification of code changes across multiple dimension
 ## Background
 
 The user's Claude configuration includes a sophisticated verification command that:
+
 - Orchestrates three independent agents in parallel: code-reviewer, test-engineer, comment-auditor
 - Each agent evaluates changes across specific dimensions and outputs categorized findings (Critical / Important / Nit)
 - A coordinator agent synthesizes all three reports into a unified verdict and merged findings
@@ -77,30 +78,38 @@ User runs `/verify` with optional target:
 **Overview:** [2-3 sentences combining all three perspectives]
 
 ### Critical
+
 - [code-reviewer|test-engineer|comment-auditor|all] file:line issue
 
 ### Important
+
 - [all] file:line issue
 
 ### Nits
+
 - [code-reviewer] file:line description
 
 ### Coverage Gaps (from test-engineer)
+
 - Concrete untested behavior and recommended test case
 
 ### Smoke Test Result (from test-engineer)
+
 - Commands run / suite pass-fail / manual smoke observations
 
 ### Verification Story (from code-reviewer)
+
 - Tests reviewed / build verified / security checked
 
 ### Comment Audit (from comment-auditor)
+
 - MUST KILL: file:line comment -> delete/refactor target
 - Correctness: file:line suppression -> rule name and guilty symbol
 - Kept: file:line keep-list item and proof
 - Skipped: files that could not be read
 
 ### What's Done Well
+
 - Positive observations from any agent
 ```
 

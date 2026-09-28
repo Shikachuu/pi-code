@@ -15,18 +15,18 @@ Log in once per machine with `/login`, or export the provider env var (for examp
 
 ## Layout
 
-| Path | Pi reads it as |
-|---|---|
-| `agent/settings.json` | global settings |
-| `agent/models.json` | custom providers and models; keys only as `$ENV_VAR` or `!command` |
-| `agent/keybindings.json` | keybindings |
-| `agent/AGENTS.md` | global context file, loaded before any project AGENTS.md |
-| `agent/APPEND_SYSTEM.md` | appended to the default system prompt |
-| `agent/SYSTEM.md` | replaces the default system prompt (absent on purpose) |
-| `agent/skills/<name>/SKILL.md` | skills, also callable as `/skill:<name>` |
-| `agent/prompts/<name>.md` | prompt templates, called as `/<name>` |
-| `agent/extensions/<name>/index.ts` | extensions, loaded with jiti (no build step) |
-| `agent/themes/<name>.json` | themes |
+| Path                               | Pi reads it as                                                     |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `agent/settings.json`              | global settings                                                    |
+| `agent/models.json`                | custom providers and models; keys only as `$ENV_VAR` or `!command` |
+| `agent/keybindings.json`           | keybindings                                                        |
+| `agent/AGENTS.md`                  | global context file, loaded before any project AGENTS.md           |
+| `agent/APPEND_SYSTEM.md`           | appended to the default system prompt                              |
+| `agent/SYSTEM.md`                  | replaces the default system prompt (absent on purpose)             |
+| `agent/skills/<name>/SKILL.md`     | skills, also callable as `/skill:<name>`                           |
+| `agent/prompts/<name>.md`          | prompt templates, called as `/<name>`                              |
+| `agent/extensions/<name>/index.ts` | extensions, loaded with jiti (no build step)                       |
+| `agent/themes/<name>.json`         | themes                                                             |
 
 `agent/.gitignore` is an allowlist. Pi writes `auth.json`, `trust.json`, `sessions/`, `models-store.json`, `bin/` and other state into `agent/`, and git ignores all of them by default, including any new state files future pi versions add.
 
