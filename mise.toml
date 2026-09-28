@@ -43,7 +43,7 @@ run = 'npx oxfmt --check "agent/extensions/**/*.ts" "tests/**/*.ts"'
 description = "Regenerate test snapshots"
 dir = "{{config_root}}"
 env = { UPDATE_SNAPSHOTS = "1" }
-run = "npx vitest run"
+run = "npx vitest run tests/resources.test.ts tests/system-prompt.test.ts tests/smoke.test.ts"
 
 [tasks.golden]
 description = "Regenerate sdd golden fixtures"

@@ -5,14 +5,12 @@ import { assert } from 'vitest'
 
 const DIR = join(import.meta.dirname, 'fixtures', 'sdd-golden')
 
-const asserted = new Set<string>()
-
 export function expectGolden(name: string, actual: string): void {
-  asserted.add(name)
   const path = join(DIR, `${name}.txt`)
   if (process.env.UPDATE_GOLDENS) {
     mkdirSync(DIR, { recursive: true })
     writeFileSync(path, `${actual}\n`)
+    return
   }
   let expected: string
   try {
@@ -21,8 +19,4 @@ export function expectGolden(name: string, actual: string): void {
     throw new Error(`missing golden ${name}; run \`mise run golden\``)
   }
   assert.strictEqual(actual, expected, `golden ${name} changed; review, then run \`mise run golden\``)
-}
-
-export function assertedGoldens(): ReadonlySet<string> {
-  return asserted
 }

@@ -1,0 +1,45 @@
+## Verification Summary
+
+**Verdict:** REQUEST CHANGES
+
+**Scope:**
+main (default) - 2 file(s). Commands: git diff main...HEAD
+
+**Overview:** CR overview. TE overview. CA overview.
+
+### Critical
+- [code-reviewer, test-engineer] a.ts:5 critical issue; important issue -> fix
+- [comment-auditor] c.ts:3 wrong -> fix
+
+### Important
+- [comment-auditor] m1.ts:1 narration -> delete
+- [comment-auditor] m2.ts:2 dead -> remove
+
+### Nits
+- [comment-auditor] n.ts:4 tidy
+
+### Coverage Gaps (from test-engineer)
+- gap one
+- gap two
+
+### Smoke Test Result (from test-engineer)
+- Commands: npm test
+- Suite: passed
+- Manual: checked
+- Blocked: network
+
+### Verification Story (from code-reviewer)
+- Tests reviewed: yes
+- Build verified: yes
+- Security checked: yes
+
+### Comment Audit (from comment-auditor)
+**MUST KILL**
+- m1.ts:1 narration -> delete
+- m2.ts:2 dead -> remove
+**Correctness**
+- c.ts:3 wrong -> fix
+**Kept**
+- k.ts:5 good - keep
+**Skipped**
+- skip one

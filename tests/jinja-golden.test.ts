@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { assert, expect, test, afterAll } from 'vitest'
+import { assert, expect, test } from 'vitest'
 
 import {
   PLAN_TEMPLATE,
@@ -13,7 +13,7 @@ import {
 import { MAX_PROBES, draftArgs, discoveryArgs, enrichArgs, researchArgs } from '../agent/extensions/sdd/workflows.ts'
 import { renderSummary } from '../agent/extensions/verification/report.ts'
 import type { Scope } from '../agent/extensions/verification/scope.ts'
-import { expectGolden, assertedGoldens } from './golden.ts'
+import { expectGolden } from './golden.ts'
 import { reports } from './helpers.ts'
 
 const SPEC = '# Phone\n\n## Goal\nAdd a phone field.\n'
@@ -58,7 +58,7 @@ const COVERED: Record<string, string[]> = {
   'research-gather': ['research-gather'],
   'research-verify': ['research-verify'],
   'research-report-prompt': ['research-report-prompt', 'research-report-prompt-no-discovery'],
-  'verification-summary': ['verification-summary', 'verification-summary-missing'],
+  'verification-summary': ['verification-summary', 'verification-summary-missing', 'verification-summary-full'],
 }
 
 test('rendered sdd templates match the pre-port goldens byte for byte', () => {
@@ -209,6 +209,39 @@ test('renderSummary matches the pre-port goldens with and without a missing agen
   expectGolden('verification-summary-missing', renderSummary(SCOPE, reports({ commentAuditor: null })))
 })
 
+test('renderSummary matches the fully populated pre-port golden', () => {
+  expectGolden(
+    'verification-summary-full',
+    renderSummary(SCOPE, {
+      codeReviewer: {
+        verdict: 'APPROVE',
+        overview: 'CR overview.',
+        findings: [{ severity: 'critical', file: 'a.ts', line: 5, issue: 'critical issue', fix: 'fix' }],
+        verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'yes' },
+      },
+      testEngineer: {
+        verdict: 'APPROVE',
+        overview: 'TE overview.',
+        findings: [{ severity: 'important', file: 'a.ts', line: 5, issue: 'important issue', fix: 'fix' }],
+        coverageGaps: ['gap one', 'gap two'],
+        smokeTest: { commands: ['npm test'], suite: 'passed', manual: 'checked', blocked: ['network'] },
+      },
+      commentAuditor: {
+        verdict: 'APPROVE',
+        overview: 'CA overview.',
+        mustKill: [
+          { file: 'm1.ts', line: 1, issue: 'narration', fix: 'delete' },
+          { file: 'm2.ts', line: 2, issue: 'dead', fix: 'remove' },
+        ],
+        correctness: [{ file: 'c.ts', line: 3, issue: 'wrong', fix: 'fix' }],
+        nits: [{ file: 'n.ts', line: 4, issue: 'tidy' }],
+        kept: [{ file: 'k.ts', line: 5, issue: 'good', fix: 'keep' }],
+        skipped: ['skip one'],
+      },
+    }),
+  )
+})
+
 test('sdd prompt builders carry their inputs independently of the goldens', () => {
   const enrich = enrichArgs('add a phone field', MEMORY)
   expect(enrich.scope.prompt).toContain('add a phone field')
@@ -294,13 +327,11 @@ test('every tracked template has a golden fixture and every fixture is asserted'
     for (const fixture of goldens) assert.isTrue(fixtures.has(fixture), `${name} -> ${fixture}`)
   }
   for (const fixture of fixtures) assert.isTrue(referenced.has(fixture), `orphan fixture ${fixture}`)
-})
-
-afterAll(() => {
-  const asserted = assertedGoldens()
-  for (const fixture of new Set(Object.values(COVERED).flat())) {
-    assert.isTrue(asserted.has(fixture), `golden not asserted: ${fixture}`)
-  }
+  const source = readFileSync(join(import.meta.dirname, 'jinja-golden.test.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+  const asserted = new Set([...source.matchAll(/expectGolden\(\s*['"]([^'"]+)['"]/g)].map((match) => match[1]))
+  for (const fixture of referenced) assert.isTrue(asserted.has(fixture), `golden not asserted: ${fixture}`)
 })
 
 test('tracked .jinja templates use LF line endings', () => {

@@ -41,3 +41,9 @@ shape. Without it every list-ended report gained a newline.
   heading matching and error strings are unchanged. The parsing stays in
   TypeScript because `@huggingface/jinja` exposes no custom filter or test API
   and no split filter.
+- The `/spec` revision step label now reads `draft spec` when a draft is present
+  but the feedback is empty. The pre-port code labelled that case `revise spec`
+  while the prompt it sent said "Compose a feature spec from this input", so the
+  label disagreed with the prompt. `draftArgs` now builds the label from the same
+  `draft && feedback` condition as `draft-prompt.jinja`, and
+  `tests/jinja-golden.test.ts` pins both.
