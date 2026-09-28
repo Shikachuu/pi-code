@@ -45,13 +45,9 @@
 {% endif %}
 
 ### Smoke Test Result (from test-engineer)
-{% if testEngineer.smokeTest %}
 {% for line in testEngineer.smokeTest %}
 {{ line }}
 {% endfor %}
-{% else %}
-- none
-{% endif %}
 {% else %}
 ### Coverage Gaps (from test-engineer)
 test-engineer did not return a report
@@ -62,13 +58,9 @@ test-engineer did not return a report
 
 {% if codeReviewer %}
 ### Verification Story (from code-reviewer)
-{% if codeReviewer.verificationStory %}
 {% for line in codeReviewer.verificationStory %}
 {{ line }}
 {% endfor %}
-{% else %}
-- none
-{% endif %}
 {% else %}
 ### Verification Story (from code-reviewer)
 code-reviewer did not return a report

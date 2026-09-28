@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { assert, expect, test } from 'vitest'
 
 import {
   PLAN_TEMPLATE,
@@ -174,42 +174,51 @@ test('rendered prompts contain no unrendered template syntax', () => {
   const enrich = enrichArgs('add a phone field', MEMORY)
   const discovery = discoveryArgs(SPEC, undefined, MEMORY)
   const research = researchArgs('phone validation', SPEC, DISCOVERY)
-  const rendered = [
-    SPEC_TEMPLATE,
-    PLAN_TEMPLATE,
-    planPrompt({
-      slug: 'phone',
-      dir: '.pi/sdd/phone',
-      spec: SPEC,
-      discovery: DISCOVERY,
-      research: RESEARCH,
-      memory: MEMORY,
-    }),
-    implementPrompt({ slug: 'phone', plan: PLAN_TEMPLATE, planPath: '.pi/sdd/phone/plan.md', docs: [] }),
-    renderResearch({
-      question: 'Q',
-      summary: 'S',
-      findings: [],
-      implications: [],
-      recommendation: 'R',
-      openQuestions: [],
-    }),
-    enrich.scope.prompt,
-    enrich.repo.prompt,
-    enrich.questions.prompt,
-    draftArgs({ request: 'add phone', enrichment, answers: '', memory: MEMORY }).prompt,
-    discovery.plan.prompt,
-    discovery.probe.prompt,
-    discovery.synth.prompt,
-    research.queries.prompt,
-    research.gather.prompt,
-    research.verify.prompt,
-    research.report.prompt,
-    renderSummary(SCOPE, reports()),
-    renderSummary(SCOPE, reports({ commentAuditor: null })),
+  const rendered: [string, string][] = [
+    ['spec-template', SPEC_TEMPLATE],
+    ['plan-template', PLAN_TEMPLATE],
+    [
+      'plan-prompt',
+      planPrompt({
+        slug: 'phone',
+        dir: '.pi/sdd/phone',
+        spec: SPEC,
+        discovery: DISCOVERY,
+        research: RESEARCH,
+        memory: MEMORY,
+      }),
+    ],
+    [
+      'implement-prompt',
+      implementPrompt({ slug: 'phone', plan: PLAN_TEMPLATE, planPath: '.pi/sdd/phone/plan.md', docs: [] }),
+    ],
+    [
+      'research-report',
+      renderResearch({
+        question: 'Q',
+        summary: 'S',
+        findings: [],
+        implications: [],
+        recommendation: 'R',
+        openQuestions: [],
+      }),
+    ],
+    ['enrich-scope', enrich.scope.prompt],
+    ['enrich-repo', enrich.repo.prompt],
+    ['enrich-questions', enrich.questions.prompt],
+    ['draft-prompt', draftArgs({ request: 'add phone', enrichment, answers: '', memory: MEMORY }).prompt],
+    ['discovery-plan', discovery.plan.prompt],
+    ['discovery-probe', discovery.probe.prompt],
+    ['discovery-synth', discovery.synth.prompt],
+    ['research-queries', research.queries.prompt],
+    ['research-gather', research.gather.prompt],
+    ['research-verify', research.verify.prompt],
+    ['research-report-prompt', research.report.prompt],
+    ['verification-summary', renderSummary(SCOPE, reports())],
+    ['verification-summary-missing', renderSummary(SCOPE, reports({ commentAuditor: null }))],
   ]
-  for (const text of rendered) {
-    expect(text).not.toContain('{{')
-    expect(text).not.toContain('{%')
+  for (const [name, text] of rendered) {
+    assert.isFalse(text.includes('{{'), `${name} contains unrendered {{`)
+    assert.isFalse(text.includes('{%'), `${name} contains unrendered {%`)
   }
 })

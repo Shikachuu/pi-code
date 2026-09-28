@@ -22,6 +22,8 @@ export function renderTemplate(path: string, context: Record<string, unknown> = 
   }
   const rendered = template.render(context)
   // @huggingface/jinja strips one trailing newline from the source before
-  // parsing, so a template ending in a loop or variable still renders one.
+  // parsing, so a template ending in a loop or variable still renders one. The
+  // strip below normalizes that; no template may rely on the output ending in a
+  // newline.
   return rendered.endsWith('\n') ? rendered.slice(0, -1) : rendered
 }
