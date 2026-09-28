@@ -34,7 +34,9 @@ function readLedger(cwd: string, slug: string): Ledger {
     const data = JSON.parse(readFileSync(ledgerPath(cwd, slug), 'utf8')) as Partial<Ledger>
     if (!Array.isArray(data.runs)) return { runs: [] }
     return {
-      runs: data.runs.filter((r) => typeof r?.run === 'number' && Array.isArray(r.findings)),
+      runs: data.runs
+        .filter((r) => typeof r?.run === 'number' && Array.isArray(r.findings))
+        .map((r) => ({ ...r, findings: r.findings.map((f) => ({ ...f, category: f.category || 'uncategorized' })) })),
       ...(typeof data.lessonsThrough === 'number' ? { lessonsThrough: data.lessonsThrough } : {}),
     }
   } catch {
@@ -72,10 +74,7 @@ export function priorFindings(cwd: string, slug: string): MergedFinding[] {
 
 export function byCategory(findings: MergedFinding[]): Map<string, MergedFinding[]> {
   const groups = new Map<string, MergedFinding[]>()
-  for (const finding of findings) {
-    const category = finding.category || 'uncategorized'
-    groups.set(category, [...(groups.get(category) ?? []), finding])
-  }
+  for (const finding of findings) groups.set(finding.category, [...(groups.get(finding.category) ?? []), finding])
   return groups
 }
 

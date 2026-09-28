@@ -964,6 +964,10 @@ test('readFindings drops malformed runs and fixInstructions files a missing cate
   )
   const runs = readFindings(cwd, slug)
   expect(runs.map((r) => r.run)).toEqual([1])
+  expect(
+    priorFindings(cwd, slug).map((f) => f.category),
+    'every reader sees the default',
+  ).toEqual(['uncategorized'])
   expect(fixInstructions(must(runs[0], 'run').findings, ['git diff HEAD'])).toContain('- uncategorized (1): a.ts:1')
 })
 

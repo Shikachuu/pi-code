@@ -411,6 +411,23 @@ test('verifyArgs adds prior findings only to the agent that raised them', () => 
   expect(args.testEngineer.prompt).toBe(plain.testEngineer.prompt)
 })
 
+test('verifyArgs gives a finding raised by two agents to both of them', () => {
+  const args = verifyArgs(baseScope(), [
+    {
+      severity: 'important',
+      category: 'untested-error-path',
+      file: 'a.ts',
+      line: 7,
+      issue: 'no test',
+      fix: '',
+      agents: ['code-reviewer', 'test-engineer'],
+    },
+  ])
+  expect(args.codeReviewer.prompt).toContain('(untested-error-path) a.ts:7 no test')
+  expect(args.testEngineer.prompt).toContain('(untested-error-path) a.ts:7 no test')
+  expect(args.commentAuditor.prompt).not.toContain('<prior-findings>')
+})
+
 test('verdict is APPROVE only with no critical/important findings, every agent reporting and no agent requesting changes', () => {
   expect(verdict(reports(), [])).toBe('APPROVE')
   expect(

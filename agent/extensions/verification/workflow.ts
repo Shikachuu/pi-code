@@ -24,7 +24,7 @@ function priorBlock(prior: MergedFinding[], agent: string): string {
   const own = prior.filter((f) => f.agents.includes(agent))
   if (own.length === 0) return ''
   const lines = own.map((f) => `- [${f.severity}] (${f.category}) ${f.file}:${f.line} ${f.issue}`)
-  return `\n\n<prior-findings>\n${lines.join('\n')}\n</prior-findings>\n\nThe previous review round blocked on these findings. Review the full scope as usual; this list does not narrow it. Also report every prior finding that is still present, at its current line and with the same category. Do not report a prior finding that has been fixed.`
+  return `\n\n<prior-findings>\n${lines.join('\n')}\n</prior-findings>\n\nThe previous verify run blocked on these findings. Review the full scope as usual; this list does not narrow it. Also report every prior finding that is still present, at its current line and with the same category. Do not report a prior finding that has been fixed.`
 }
 
 export function verifyArgs(scope: Scope, prior: MergedFinding[] = []) {
