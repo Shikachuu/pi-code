@@ -1238,10 +1238,10 @@ test('tilde fences are not recognised, so headings inside them are demoted', () 
   expect(readSection(md, 'A')).toBe('~~~')
 })
 
-test('replaceSection demotes headings in the body so they cannot end the section', () => {
+test('replaceSection demotes body headings one level', () => {
   const md = '# Plan\n\n## Verification\n- verdict: APPROVE\n'
-  const updated = replaceSection(md, 'Verification', '- verdict: APPROVE\n\n## Summary\ntext')
-  expect(updated).toContain('## Verification\n\n- verdict: APPROVE\n\n### Summary\ntext')
+  const updated = replaceSection(md, 'Verification', '- verdict: APPROVE\n\n## Summary\ntext\n\n# Top\nmore')
+  expect(updated).toContain('## Verification\n\n- verdict: APPROVE\n\n### Summary\ntext\n\n## Top\nmore')
 })
 
 test('replaceSection replaces in place and appends a missing section with one trailing newline', () => {

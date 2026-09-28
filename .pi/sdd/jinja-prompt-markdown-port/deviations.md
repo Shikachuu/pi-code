@@ -20,7 +20,10 @@ shape. Without it every list-ended report gained a newline.
   `tests/sdd.test.ts` covers it. An unbalanced fence in agent-authored text (an
   odd number of ``` lines in a verification report) leaves later headings
   un-demoted, exactly as the same fence desynchronizes `sectionBounds`; the two
-  stay consistent.
+  stay consistent, but a level-2 heading written this way stays in `plan.md` as a
+  sibling of `## Verification` until the next write. A body `# H1` demotes to
+  `## H1`, which `sectionBounds` still treats as a section terminator, as it did
+  before the port.
 - `demoteHeadings` is line-based now. The old `/^(#{1,5})\s/gm` regex treated the
   `\n` as the required whitespace, so a line of bare hashes merged with the next
   line (`###\ntext` became `#### text`). The line-based version requires the
