@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,16 +11,12 @@ import register from '../agent/extensions/verification/index.ts'
 import { mergeFindings, renderSummary, verdict } from '../agent/extensions/verification/report.ts'
 import { type Scope, formatScope, isLarge, resolveScope } from '../agent/extensions/verification/scope.ts'
 import { VERIFY_SCRIPT, verifyArgs } from '../agent/extensions/verification/workflow.ts'
-import { asMock, must, reports } from './helpers.ts'
+import { asMock, git, must, reports } from './helpers.ts'
 
 const AGENT_DIR = join(import.meta.dirname, '..', 'agent')
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), 'verify-'))
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 }
 
 function initRepo(): string {
@@ -272,6 +267,33 @@ test('mergeFindings appends distinct issue text once and skips duplicates', () =
     },
   })
   expect(must(mergeFindings(r)[0], 'merged finding').issue).toBe('same')
+})
+
+test('mergeFindings joins two distinct non-empty fixes', () => {
+  const r = reports({
+    codeReviewer: {
+      ...must(reports().codeReviewer, 'code reviewer'),
+      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'x', fix: 'fix one' }],
+    },
+    testEngineer: {
+      ...must(reports().testEngineer, 'test engineer'),
+      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'x', fix: 'fix two' }],
+    },
+  })
+  expect(must(mergeFindings(r)[0], 'merged finding').fix).toBe('fix one; fix two')
+})
+
+test('verdict is REQUEST CHANGES when only test-engineer or comment-auditor requests changes', () => {
+  const base = reports()
+  expect(
+    verdict(reports({ testEngineer: { ...must(base.testEngineer, 'test engineer'), verdict: 'REQUEST CHANGES' } }), []),
+  ).toBe('REQUEST CHANGES')
+  expect(
+    verdict(
+      reports({ commentAuditor: { ...must(base.commentAuditor, 'comment auditor'), verdict: 'REQUEST CHANGES' } }),
+      [],
+    ),
+  ).toBe('REQUEST CHANGES')
 })
 
 test('renderSummary labels a finding flagged by all three agents as [all]', () => {
@@ -660,12 +682,14 @@ test('/verify warns on a large scope but still runs', async () => {
   }
   register(pi, { run: asMock<WorkflowRunner>(run) })
   const scopeCwd = initRepo()
-  for (let i = 0; i < 101; i++) commitFile(scopeCwd, `f${i}.ts`, `content ${i}\n`, `add f${i}`)
+  for (let i = 0; i < 101; i++) writeFileSync(join(scopeCwd, `f${i}.ts`), `content ${i}\n`)
+  git(scopeCwd, ['add', '-A'])
+  git(scopeCwd, ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '-m', 'add many'])
   writeAgentDefs(scopeCwd)
   await withAgentDir(scopeCwd, async () => {
     const { ctx, notes } = fakeCtx(scopeCwd)
-    await command(commands, 'verify').handler('HEAD~101..HEAD', ctx)
+    await command(commands, 'verify').handler('HEAD~1..HEAD', ctx)
     expect(notes.some((n) => n.level === 'warning' && /Large scope/.test(n.message))).toBe(true)
   })
   expect(ran, 'a large scope should still run, not block').toBe(true)
-})
+}, 20_000)

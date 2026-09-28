@@ -71,6 +71,13 @@ test('renderTemplate renders a variable-free template without a context argument
   expect(renderTemplate(path)).toBe('plain text')
 })
 
+test('renderTemplate renders an all-false template as empty', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
+  const path = templatePath(dir, 'empty')
+  writeFileSync(path, '{% if false %}never{% endif %}')
+  expect(renderTemplate(path)).toBe('')
+})
+
 test('renderTemplate strips the trailing newline a loop body leaves', () => {
   const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
   const path = templatePath(dir, 'loop')

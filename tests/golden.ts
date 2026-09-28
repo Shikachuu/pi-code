@@ -5,10 +5,10 @@ import { assert } from 'vitest'
 
 const DIR = join(import.meta.dirname, 'fixtures', 'sdd-golden')
 
-export function expectGolden(name: string, actual: string): void {
-  const path = join(DIR, `${name}.txt`)
+export function expectGolden(name: string, actual: string, dir: string = DIR): void {
+  const path = join(dir, `${name}.txt`)
   if (process.env.UPDATE_GOLDENS) {
-    mkdirSync(DIR, { recursive: true })
+    mkdirSync(dir, { recursive: true })
     writeFileSync(path, `${actual}\n`)
     return
   }

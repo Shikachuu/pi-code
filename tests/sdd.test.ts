@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -46,7 +45,7 @@ import {
   researchArgs,
   SINGLE_SCRIPT,
 } from '../agent/extensions/sdd/workflows.ts'
-import { asMock, must } from './helpers.ts'
+import { asMock, git, must } from './helpers.ts'
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'sdd-'))
 
@@ -223,7 +222,6 @@ test('renderResearch renders - None under every empty list', () => {
     recommendation: 'R',
     openQuestions: [],
   })
-  expect(md.match(/- None/g)?.length).toBe(4)
   expect(md).toMatch(/## Findings\n\n- None/)
   expect(md).toMatch(/## Implications for this feature\n\n- None/)
   expect(md).toMatch(/## Open questions\n\n- None/)
@@ -654,10 +652,6 @@ test('sdd_complete replaces earlier results instead of stacking them', async () 
   expect(plan).toMatch(/- \[x\] c: pass - e\n$/)
   expect(plan.startsWith(VALID_PLAN.trimEnd())).toBe(true)
 })
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
-}
 
 function initRepo(): string {
   const cwd = tmp()

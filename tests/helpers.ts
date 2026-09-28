@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -47,6 +48,10 @@ export function must<T>(value: T | null | undefined, what: string): T {
 
 export function asMock<T>(value: unknown): T {
   return value as unknown as T
+}
+
+export function git(cwd: string, args: string[]): string {
+  return execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 }
 
 export function matchSnapshot(name: string, actual: string): void {

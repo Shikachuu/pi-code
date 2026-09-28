@@ -334,12 +334,16 @@ test('every tracked template has a golden fixture and every fixture is asserted'
   for (const fixture of referenced) assert.isTrue(asserted.has(fixture), `golden not asserted: ${fixture}`)
 })
 
-test('tracked .jinja templates use LF line endings', () => {
+test('tracked .jinja templates and golden fixtures use LF line endings', () => {
   for (const dir of ['sdd', 'verification']) {
     const templatesDir = join(import.meta.dirname, '..', 'agent', 'extensions', dir, 'templates')
     for (const file of readdirSync(templatesDir).filter((name) => name.endsWith('.jinja'))) {
       assert.isFalse(readFileSync(join(templatesDir, file), 'utf8').includes('\r'), file)
     }
+  }
+  const goldenDir = join(import.meta.dirname, 'fixtures', 'sdd-golden')
+  for (const file of readdirSync(goldenDir).filter((name) => name.endsWith('.txt'))) {
+    assert.isFalse(readFileSync(join(goldenDir, file), 'utf8').includes('\r'), file)
   }
 })
 
