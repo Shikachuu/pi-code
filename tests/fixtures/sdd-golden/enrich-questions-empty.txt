@@ -1,0 +1,5 @@
+<request>
+add a phone field
+</request>
+
+List up to 4 product-level questions whose answers change what gets built, and that the request does not answer. Skip anything a developer can decide later. Each question needs a short header (at most 12 characters) and 2-4 distinct options, recommended option first. Set multiSelect true when more than one option can apply. Return an empty list when the request is clear.

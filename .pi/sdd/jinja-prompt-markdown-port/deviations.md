@@ -17,7 +17,15 @@ shape. Without it every list-ended report gained a newline.
 - `demoteHeadings` is now fence-aware. Lines inside a ``` fence keep their
   original heading level instead of being demoted. The spec requires this, the
   old regex did not do it, and no test pinned the old behaviour. A new test in
-  `tests/sdd.test.ts` covers it.
+  `tests/sdd.test.ts` covers it. An unbalanced fence in agent-authored text (an
+  odd number of ``` lines in a verification report) leaves later headings
+  un-demoted, exactly as the same fence desynchronizes `sectionBounds`; the two
+  stay consistent.
+- `demoteHeadings` is line-based now. The old `/^(#{1,5})\s/gm` regex treated the
+  `\n` as the required whitespace, so a line of bare hashes merged with the next
+  line (`###\ntext` became `#### text`). The line-based version requires the
+  space on the same line and leaves a bare `###` line alone. This is a fix, not a
+  regression, and no caller passes bare-hash lines.
 - The shared template loader lives at `agent/extensions/lib/jinja.ts`, not
   `agent/extensions/jinja.ts` as the plan wrote. Pi loads every top-level `.ts`
   file under `agent/extensions/` as an extension, so the planned path made

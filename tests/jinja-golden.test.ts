@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { assert, expect, test } from 'vitest'
 
 import {
@@ -152,6 +155,15 @@ test('enrich, draft and discovery prompts match the pre-port goldens', () => {
   expect(discoveryArgs(SPEC, DISCOVERY, '').synth.prompt).toBe(golden('discovery-synth-existing'))
 })
 
+test('prompt builders with empty optional inputs match the pre-port goldens', () => {
+  expect(enrichArgs('add a phone field', '').scope.prompt).toBe(golden('enrich-scope-empty'))
+  expect(enrichArgs('add a phone field', '').questions.prompt).toBe(golden('enrich-questions-empty'))
+  expect(discoveryArgs(SPEC, undefined, '').plan.prompt).toBe(golden('discovery-plan-empty'))
+  expect(researchArgs('phone validation', SPEC, undefined).report.prompt).toBe(
+    golden('research-report-prompt-no-discovery'),
+  )
+})
+
 test('research prompts match the pre-port goldens', () => {
   const research = researchArgs('phone validation', SPEC, DISCOVERY)
   expect(research.queries.prompt).toBe(golden('research-queries'))
@@ -214,6 +226,40 @@ test('renderResearch renders a finding with no sources as claim ()', () => {
     openQuestions: [],
   })
   expect(md).toContain('- No sources ()')
+})
+
+test('every tracked template has at least one golden fixture', () => {
+  const templates = ['sdd', 'verification'].flatMap((dir) =>
+    readdirSync(join(import.meta.dirname, '..', 'agent', 'extensions', dir, 'templates'))
+      .filter((file) => file.endsWith('.jinja'))
+      .map((file) => file.replace(/\.jinja$/, '')),
+  )
+  const fixtures = new Set(
+    readdirSync(join(import.meta.dirname, 'fixtures', 'sdd-golden')).map((file) => file.replace(/\.txt$/, '')),
+  )
+  const covered: Record<string, string[]> = {
+    'spec-template': ['spec-template'],
+    'plan-template': ['plan-template'],
+    'plan-prompt': ['plan-prompt-full', 'plan-prompt-minimal', 'plan-prompt-research', 'plan-prompt-memory'],
+    'implement-prompt': ['implement-prompt'],
+    'research-report': ['research-report'],
+    'enrich-scope': ['enrich-scope', 'enrich-scope-empty'],
+    'enrich-repo': ['enrich-repo'],
+    'enrich-questions': ['enrich-questions', 'enrich-questions-empty'],
+    'draft-prompt': ['draft-prompt', 'draft-revise'],
+    'discovery-plan': ['discovery-plan', 'discovery-plan-empty'],
+    'discovery-probe': ['discovery-probe'],
+    'discovery-synth': ['discovery-synth', 'discovery-synth-existing'],
+    'research-queries': ['research-queries'],
+    'research-gather': ['research-gather'],
+    'research-verify': ['research-verify'],
+    'research-report-prompt': ['research-report-prompt', 'research-report-prompt-no-discovery'],
+    'verification-summary': ['verification-summary', 'verification-summary-missing'],
+  }
+  expect(Object.keys(covered).sort()).toEqual([...templates].sort())
+  for (const [name, goldens] of Object.entries(covered)) {
+    for (const fixture of goldens) expect(fixtures.has(fixture), `${name} -> ${fixture}`).toBe(true)
+  }
 })
 
 test('rendered prompts contain no unrendered template syntax', () => {

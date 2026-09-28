@@ -396,6 +396,33 @@ test('renderSummary renders finding arrows, blocked smoke tests and audit arrows
   expect(md).toMatch(/\*\*Kept\*\*\n- c\.ts:1 good - keep/)
 })
 
+test('renderSummary renders every populated list under its own heading', () => {
+  const md = renderSummary(
+    baseScope(),
+    reports({
+      codeReviewer: {
+        ...must(reports().codeReviewer, 'code reviewer'),
+        findings: [{ severity: 'important', file: 'i.ts', line: 4, issue: 'missing', fix: 'add it' }],
+      },
+      testEngineer: {
+        ...must(reports().testEngineer, 'test engineer'),
+        coverageGaps: ['gap one', 'gap two'],
+        findings: [{ severity: 'nit', file: 'n.ts', line: 5, issue: 'tidy', fix: '' }],
+      },
+      commentAuditor: {
+        ...must(reports().commentAuditor, 'comment auditor'),
+        correctness: [{ file: 'c.ts', line: 1, issue: 'wrong', fix: 'fix' }],
+        skipped: ['not our code'],
+      },
+    }),
+  )
+  expect(md).toMatch(/### Important\n- \[code-reviewer\] i\.ts:4 missing -> add it/)
+  expect(md).toMatch(/### Nits\n- \[test-engineer\] n\.ts:5 tidy/)
+  expect(md).toMatch(/### Coverage Gaps \(from test-engineer\)\n- gap one\n- gap two/)
+  expect(md).toMatch(/\*\*Correctness\*\*\n- c\.ts:1 wrong -> fix/)
+  expect(md).toMatch(/\*\*Skipped\*\*\n- not our code/)
+})
+
 test('all three agentTypes are registered, read-only, and use the expected thinking level', () => {
   const registry = loadAgentRegistry('', {
     projectDir: '/does/not/exist',

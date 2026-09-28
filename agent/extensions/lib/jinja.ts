@@ -9,6 +9,10 @@ export function templatePath(dir: string, name: string): string {
   return join(dir, `${name}.jinja`)
 }
 
+export function clearTemplateCache(): void {
+  cache.clear()
+}
+
 function stripTrailingNewline(text: string): string {
   return text.endsWith('\n') ? text.slice(0, -1) : text
 }
