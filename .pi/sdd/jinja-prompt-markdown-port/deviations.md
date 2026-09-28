@@ -32,6 +32,9 @@ shape. Without it every list-ended report gained a newline.
   `tests/resources.test.ts` fail with "does not export a valid factory
   function". A subdirectory file is not loaded as an extension. The intent (one
   cached loader read by `sdd/` and `verification/`) is unchanged.
-- `replaceSection`'s section scanning, heading matching and error strings are
-  unchanged from the pre-port code. They stay in TypeScript because
-  `@huggingface/jinja` exposes no custom filter or test API and no split filter.
+- `replaceSection` demotes the body through `demoteHeadings` before writing it. The
+  pre-port code left that to the caller; folding it in removes a call-ordering
+  obligation that had already caused a truncated section once. Section scanning,
+  heading matching and error strings are unchanged. The parsing stays in
+  TypeScript because `@huggingface/jinja` exposes no custom filter or test API
+  and no split filter.
