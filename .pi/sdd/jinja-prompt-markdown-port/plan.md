@@ -39,7 +39,7 @@ Replace the hand-written string, split and regex handling of prompt and markdown
 - [x] 6. Port `verification/report.ts` renderSummary to `verification-summary.jinja`; keep mergeFindings, verdict, auditToFindings attribution in TypeScript.
 - [x] 7. Write `deviations.md` from a diff of golden output against migrated output; every difference is either fixed (indentation, trailing newline, blank-line collapse) or listed and justified.
 - [x] 8. Extend tests: whitespace-sensitive renders (`## Open questions\n\n- None`, `- `[cmd]` - <what>` lines), missing headings, `##` inside code fences for both the section scanner and demoteHeadings, replaceSection replace-in-place plus append plus single trailing newline, and golden comparisons.
-- [ ] 9. Run the full validation pipeline until green; confirm `mise drift` still passes (no runtime writes under `agent/`).
+- [x] 9. Run the full validation pipeline until green; confirm `mise drift` still passes (no runtime writes under `agent/`).
 
 ## Acceptance criteria
 
