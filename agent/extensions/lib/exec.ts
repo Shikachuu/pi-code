@@ -12,7 +12,7 @@ export interface RunResult {
   stdout: string
   stderr: string
   code: number
-  /** True when the command could not be spawned because the binary is absent from PATH. */
+  /** True when the process could not be spawned, for example when the binary is absent from PATH. */
   missing: boolean
 }
 
@@ -49,7 +49,6 @@ export function run(command: string, args: string[], options: RunOptions = {}): 
   })
 }
 
-/** Like `run`, but returns undefined when the command fails or is missing. */
 export async function tryRun(
   command: string,
   args: string[],
@@ -59,7 +58,6 @@ export async function tryRun(
   return result.ok ? result : undefined
 }
 
-/** Render a "not found on PATH" message for a missing binary, or undefined when it ran. */
 export function missingBinary(command: string, result: RunResult): string | undefined {
   return result.missing ? `${command} (not found on PATH): ${result.stderr.trim()}` : undefined
 }

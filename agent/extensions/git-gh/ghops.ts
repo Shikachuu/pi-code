@@ -119,7 +119,7 @@ export function prEditArgs(
 }
 
 export function gitLogArgs(base: string): string[] {
-  return ['log', `--format=%s%n%b${RECORD_SEPARATOR}`, `${base}..HEAD`]
+  return ['log', '-n', '50', `--format=%s%n%b${RECORD_SEPARATOR}`, `${base}..HEAD`]
 }
 
 export function parseCommits(raw: string): CommitSubject[] {
@@ -135,7 +135,6 @@ export function parseCommits(raw: string): CommitSubject[] {
     })
 }
 
-/** A PR body from local commits: a summary line with bodies, then a commit list. */
 export function buildPrBody(commits: CommitSubject[]): string {
   if (commits.length === 0) return 'No local commits ahead of the base branch.'
   const summary = commits
@@ -145,7 +144,8 @@ export function buildPrBody(commits: CommitSubject[]): string {
     })
     .join('\n')
   const list = commits.map((commit) => `- ${commit.subject}`).join('\n')
-  return `## Summary\n\n${summary}\n\n## Commits\n\n${list}`
+  const cap = commits.length >= 50 ? '\n\n(Showing the latest 50 commits.)' : ''
+  return `## Summary\n\n${summary}\n\n## Commits\n\n${list}${cap}`
 }
 
 export function parsePrView(raw: string): PrView | undefined {
@@ -215,7 +215,6 @@ function isPending(check: Check): boolean {
   )
 }
 
-/** Key off bucket/state, not the exit code: gh pr checks exits 8 while checks are pending. */
 export function summarizeChecks(checks: Check[]): string {
   if (checks.length === 0) return 'No checks reported for this pull request.'
   const failing = checks.filter(isFailing).length

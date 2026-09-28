@@ -16,7 +16,7 @@ const NOTHING_STAGED = 'Nothing is staged. Stage the files you want with git add
 type Staged = { ok: true; text: string } | { ok: false; error: string }
 
 async function readStaged(cwd: string, signal: AbortSignal | undefined): Promise<Staged> {
-  const result = await run('git', ['diff', '--cached'], { cwd, signal })
+  const result = await run('git', ['diff', '--cached', '--no-ext-diff'], { cwd, signal })
   if (result.missing) return { ok: false, error: `git (not found on PATH): ${result.stderr.trim()}` }
   if (!result.ok) {
     return {
@@ -83,7 +83,7 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) {
         return text(`Committed:\n${summary}${hintText}\n\nPush declined; the commit stays local.`)
       }
-      const push = await run('git', ['push', remote, branch], { cwd, signal })
+      const push = await run('git', ['push', '--set-upstream', remote, branch], { cwd, signal })
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {
         return text(

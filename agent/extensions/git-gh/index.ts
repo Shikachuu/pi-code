@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-import { run } from '../lib/exec.ts'
+import { run, type RunResult } from '../lib/exec.ts'
 import {
   authArgs,
   buildPrBody,
@@ -48,6 +48,12 @@ async function resolveBase(cwd: string, requested: string | undefined, signal: A
   return undefined
 }
 
+function ghFailure(command: string, result: RunResult): string {
+  if (result.missing) return `gh (not found on PATH): ${result.stderr.trim()}`
+  const detail = result.stderr.trim() || result.stdout.trim() || '(no output from gh)'
+  return `${command} failed with exit code ${result.code}: ${detail}`
+}
+
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: 'gh',
@@ -70,25 +76,22 @@ export default function (pi: ExtensionAPI) {
       switch (params.operation) {
         case 'auth': {
           const json = await run('gh', authArgs(true), { cwd, signal })
-          if (json.missing) return text(`gh (not found on PATH): ${json.stderr.trim()}`)
+          if (json.missing) return text(ghFailure('gh auth status', json))
           if (json.ok) {
             const lines = parseAuthHosts(json.stdout)
             if (lines && lines.length) return text(lines.join('\n'))
           }
           const human = await run('gh', authArgs(false), { cwd, signal })
-          if (human.missing) return text(`gh (not found on PATH): ${human.stderr.trim()}`)
+          if (human.missing) return text(ghFailure('gh auth status', human))
           if (human.ok) return text(human.stdout.trim() || 'gh is authenticated.')
-          return text(`gh is not authenticated:\n${human.stderr.trim() || human.stdout.trim()}`)
+          return text(
+            `gh is not authenticated:\n${human.stderr.trim() || human.stdout.trim() || '(no output from gh)'}`,
+          )
         }
 
         case 'repo view': {
           const result = await run('gh', repoViewArgs(), { cwd, signal })
-          if (result.missing) return text(`gh (not found on PATH): ${result.stderr.trim()}`)
-          if (!result.ok) {
-            return text(
-              `gh repo view failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
-          }
+          if (!result.ok) return text(ghFailure('gh repo view', result))
           const repo = parseRepoView(result.stdout)
           if (!repo) return text(`gh repo view produced output this tool could not parse: ${result.stdout.trim()}`)
           return text(formatRepoView(repo))
@@ -96,12 +99,7 @@ export default function (pi: ExtensionAPI) {
 
         case 'pr view': {
           const result = await run('gh', prViewArgs(params.target), { cwd, signal })
-          if (result.missing) return text(`gh (not found on PATH): ${result.stderr.trim()}`)
-          if (!result.ok) {
-            return text(
-              `gh pr view failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
-          }
+          if (!result.ok) return text(ghFailure('gh pr view', result))
           const pr = parsePrView(result.stdout)
           if (!pr) return text(`gh pr view produced output this tool could not parse: ${result.stdout.trim()}`)
           return text(formatPrView(pr))
@@ -109,14 +107,9 @@ export default function (pi: ExtensionAPI) {
 
         case 'pr checks': {
           const result = await run('gh', prChecksArgs(params.target), { cwd, signal })
-          if (result.missing) return text(`gh (not found on PATH): ${result.stderr.trim()}`)
           const checks = parseChecks(result.stdout)
           // gh pr checks exits 8 while checks are pending, so parse stdout before judging the exit code.
-          if (!checks) {
-            return text(
-              `gh pr checks failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
-          }
+          if (!checks) return text(ghFailure('gh pr checks', result))
           return text(summarizeChecks(checks))
         }
 
@@ -141,14 +134,11 @@ export default function (pi: ExtensionAPI) {
             return text(`Pull request not created. Retry to confirm.\n\nBase: ${base}\nTitle: ${title}\n\n${body}`)
           }
           const result = await run('gh', prCreateArgs({ title, body, base }), { cwd, signal })
-          if (result.missing) return text(`gh (not found on PATH): ${result.stderr.trim()}`)
           const url = findPrUrl(result.stdout)
           if (result.ok)
             return text(url ? `Created pull request: ${url}` : result.stdout.trim() || 'Pull request created.')
           if (url) return text(`Pull request created but gh exited ${result.code}: ${url}\n${result.stderr.trim()}`)
-          return text(
-            `gh pr create failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-          )
+          return text(ghFailure('gh pr create', result))
         }
 
         case 'pr update': {
@@ -168,12 +158,7 @@ export default function (pi: ExtensionAPI) {
           const confirmed = await ctx.ui.confirm('Update pull request', preview)
           if (!confirmed) return text(`Pull request not updated. Retry to confirm.\n\n${preview}`)
           const result = await run('gh', prEditArgs(target, fields), { cwd, signal })
-          if (result.missing) return text(`gh (not found on PATH): ${result.stderr.trim()}`)
-          if (!result.ok) {
-            return text(
-              `gh pr edit failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
-          }
+          if (!result.ok) return text(ghFailure('gh pr edit', result))
           return text(result.stdout.trim() || 'Pull request updated.')
         }
       }

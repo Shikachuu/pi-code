@@ -91,7 +91,7 @@ export default function (pi: ExtensionAPI) {
           if (!loaded.ok) return text(loaded.error)
           const duplicate = existingWorktreeError(loaded.envelope, branch)
           if (duplicate) return text(duplicate)
-          const result = await run('wt', ['switch', '-c', branch], { cwd, signal })
+          const result = await run('wt', ['switch', '-c', branch, '--no-cd'], { cwd, signal })
           if (result.missing) return text(`wt (not found on PATH): ${result.stderr.trim()}`)
           if (!result.ok) {
             return text(

@@ -1,10 +1,11 @@
 export interface WtChanges {
-  staged?: number | undefined
-  modified?: number | undefined
-  untracked?: number | undefined
-  renamed?: number | undefined
-  deleted?: number | undefined
-  conflicted?: number | undefined
+  staged?: boolean | number | undefined
+  modified?: boolean | number | undefined
+  untracked?: boolean | number | undefined
+  renamed?: boolean | number | undefined
+  deleted?: boolean | number | undefined
+  conflicted?: boolean | number | undefined
+  diff?: { added?: number | undefined; deleted?: number | undefined } | undefined
 }
 
 export interface WtWorktree {
@@ -44,8 +45,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseChanges(value: Record<string, unknown>): WtChanges {
   const changes: WtChanges = {}
   for (const key of CHANGE_KEYS) {
-    const count = value[key]
-    if (typeof count === 'number') changes[key] = count
+    const flag = value[key]
+    if (typeof flag === 'boolean' || typeof flag === 'number') changes[key] = flag
+  }
+  if (isRecord(value.diff)) {
+    const diff: { added?: number | undefined; deleted?: number | undefined } = {}
+    if (typeof value.diff.added === 'number') diff.added = value.diff.added
+    if (typeof value.diff.deleted === 'number') diff.deleted = value.diff.deleted
+    changes.diff = diff
   }
   return changes
 }
@@ -67,7 +74,11 @@ function parseItem(value: Record<string, unknown>): WtItem {
   return item
 }
 
-/** Parse the schema-2 `wt list --format=json` envelope. Returns undefined on invalid JSON. */
+function isChangeSet(value: boolean | number | undefined): boolean {
+  return value === true || (typeof value === 'number' && value > 0)
+}
+
+/** Parse the schema-2 `wt list --format=json` envelope. */
 export function parseEnvelope(raw: string): WtEnvelope | undefined {
   let data: unknown
   try {
@@ -82,11 +93,15 @@ export function parseEnvelope(raw: string): WtEnvelope | undefined {
 }
 
 export function isDirty(changes: WtChanges): boolean {
-  return CHANGE_KEYS.some((key) => (changes[key] ?? 0) > 0)
+  if (CHANGE_KEYS.some((key) => isChangeSet(changes[key]))) return true
+  return (changes.diff?.added ?? 0) > 0 || (changes.diff?.deleted ?? 0) > 0
 }
 
 export function describeChanges(changes: WtChanges): string {
-  const parts = CHANGE_KEYS.filter((key) => (changes[key] ?? 0) > 0).map((key) => `${changes[key] ?? 0} ${key}`)
+  const parts: string[] = CHANGE_KEYS.filter((key) => isChangeSet(changes[key]))
+  const added = changes.diff?.added ?? 0
+  const deleted = changes.diff?.deleted ?? 0
+  if (added > 0 || deleted > 0) parts.push(`+${added}/-${deleted}`)
   return parts.length ? `dirty (${parts.join(', ')})` : 'clean'
 }
 

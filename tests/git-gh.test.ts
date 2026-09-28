@@ -1,8 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { afterEach, expect, test } from 'vitest'
 
 import {
@@ -20,44 +20,28 @@ import {
   prChecksArgs,
   prCreateArgs,
   prEditArgs,
+  PR_CHECKS_FIELDS,
+  PR_VIEW_FIELDS,
   prViewArgs,
+  REPO_VIEW_FIELDS,
   repoViewArgs,
   summarizeChecks,
 } from '../agent/extensions/git-gh/ghops.ts'
 import register from '../agent/extensions/git-gh/index.ts'
-import { asMock, git, must } from './helpers.ts'
+import {
+  asMock,
+  emptyPathDir,
+  git,
+  loadRegisteredTool,
+  must,
+  restrictPath,
+  restorePathStubs,
+  shellQuote,
+  stubOnPath,
+  toolResultText as resultText,
+} from './helpers.ts'
 
-interface ToolResult {
-  content: { type: string; text: string }[]
-  details: unknown
-}
-
-interface Tool {
-  name: string
-  promptSnippet?: string
-  promptGuidelines?: string[]
-  execute(
-    id: string,
-    params: unknown,
-    signal: undefined,
-    onUpdate: undefined,
-    ctx: ExtensionContext,
-  ): Promise<ToolResult>
-}
-
-function loadTool(): Tool {
-  let tool: Tool | undefined
-  register(
-    asMock<ExtensionAPI>({
-      registerTool: (t: unknown) => {
-        tool = asMock<Tool>(t)
-      },
-    }),
-  )
-  return must(tool, 'gh tool')
-}
-
-const resultText = (result: ToolResult): string => must(result.content[0], 'tool result content').text
+const loadTool = () => loadRegisteredTool(register)
 
 function ctx(cwd: string, confirm = true): ExtensionContext {
   return asMock<ExtensionContext>({
@@ -80,46 +64,10 @@ function readOnlyCtx(cwd: string): ExtensionContext {
   })
 }
 
-interface Stub {
-  restore(): void
-  calls(): string[]
-}
+afterEach(restorePathStubs)
 
-const stubs: Stub[] = []
-afterEach(() => {
-  for (const stub of stubs.splice(0).reverse()) stub.restore()
-})
-
-function restrictPath(dir: string): void {
-  const previous = process.env.PATH ?? ''
-  process.env.PATH = dir
-  stubs.push({ restore: () => (process.env.PATH = previous), calls: () => [] })
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`
-}
-
-function stubGh(script: string): Stub {
-  const dir = mkdtempSync(join(tmpdir(), 'stub-gh-'))
-  const logPath = join(dir, 'calls.log')
-  const file = join(dir, 'gh')
-  writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${shellQuote(logPath)}\n${script}\n`)
-  chmodSync(file, 0o755)
-  const previous = process.env.PATH ?? ''
-  process.env.PATH = `${dir}:${previous}`
-  const stub: Stub = {
-    restore: () => (process.env.PATH = previous),
-    calls: () => {
-      try {
-        return readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean)
-      } catch {
-        return []
-      }
-    },
-  }
-  stubs.push(stub)
-  return stub
+function stubGh(script: string) {
+  return stubOnPath('gh', script)
 }
 
 function initRepo(): string {
@@ -253,7 +201,98 @@ test('auth reports hosts when logged in and stderr when logged out', async () =>
   const text = resultText(loggedOut)
   expect(text).toMatch(/not authenticated/)
   expect(text).toContain('You are not logged into any GitHub hosts.')
-  expect(wt.calls().length).toBeGreaterThan(0)
+  expect(wt.calls()).toContain('auth status')
+})
+
+test('auth falls back to the authenticated placeholder on empty output', async () => {
+  stubGh('if [ "$1" = "auth" ]; then exit 0; fi\nexit 1')
+  const result = await loadTool().execute('id', { operation: 'auth' }, undefined, undefined, readOnlyCtx(process.cwd()))
+  expect(resultText(result)).toBe('gh is authenticated.')
+})
+
+test('an approved pr update passes the fields to gh pr edit', async () => {
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then printf '%s\\n' 'https://github.com/o/r/pull/12'; exit 0; fi\nexit 1`,
+  )
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', target: '12', title: 'New title', body: 'New body' },
+    undefined,
+    undefined,
+    ctx(process.cwd(), true),
+  )
+  expect(resultText(result)).toContain('https://github.com/o/r/pull/12')
+  expect(gh.calls().join('\n')).toContain('pr edit 12 --title New title --body New body')
+})
+
+test('a failing pr edit surfaces the command stderr', async () => {
+  stubGh('printf "%s\\n" "you do not have permission" >&2\nexit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', target: '12', title: 'x' },
+    undefined,
+    undefined,
+    ctx(process.cwd(), true),
+  )
+  expect(resultText(result)).toContain('you do not have permission')
+  expect(resultText(result)).toMatch(/gh pr edit failed with exit code 1/)
+})
+
+test('pr update needs a title or body and never calls gh', async () => {
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', target: '12' },
+    undefined,
+    undefined,
+    ctx(process.cwd(), true),
+  )
+  expect(resultText(result)).toMatch(/needs a title or a body/)
+  expect(gh.calls()).toEqual([])
+})
+
+test('pr create derives the title and body from local commits', async () => {
+  const cwd = initRepo()
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'https://github.com/o/r/pull/1'; exit 0; fi\nexit 1`,
+  )
+  const result = await loadTool().execute('id', { operation: 'pr create' }, undefined, undefined, ctx(cwd, true))
+  expect(resultText(result)).toContain('https://github.com/o/r/pull/1')
+  const log = gh.calls().join('\n')
+  expect(log).toContain('--title add b')
+  expect(log).toContain('## Summary')
+  expect(log).toContain('## Commits')
+})
+
+test('pr create needs a base branch when neither main nor master exists', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'gh-nobase-'))
+  git(cwd, ['init', '-b', 'trunk'])
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/Could not find a base branch/)
+  expect(gh.calls()).toEqual([])
+})
+
+test('pr create reports the URL even when gh exits non-zero', async () => {
+  const cwd = initRepo()
+  stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'https://github.com/o/r/pull/5'; exit 1; fi\nexit 1`,
+  )
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/Pull request created but gh exited 1/)
+  expect(resultText(result)).toContain('https://github.com/o/r/pull/5')
 })
 
 test('a declined pr create never executes the gh stub', async () => {
@@ -315,7 +354,7 @@ test('a failing gh command surfaces its stderr verbatim', async () => {
 })
 
 test('a missing gh binary is reported clearly', async () => {
-  restrictPath(mkdtempSync(join(tmpdir(), 'empty-path-')))
+  restrictPath(emptyPathDir())
   const result = await loadTool().execute(
     'id',
     { operation: 'pr view' },
@@ -360,6 +399,35 @@ test('summarizeChecks keys off bucket and state, not the exit code', () => {
   expect(summarizeChecks([])).toMatch(/No checks/)
 })
 
+test('pr checks reports a non-JSON failure with the exit code and stderr', async () => {
+  stubGh('printf "%s\\n" "network error" >&2\nexit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr checks' },
+    undefined,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(result)).toMatch(/gh pr checks failed with exit code 1/)
+  expect(resultText(result)).toContain('network error')
+})
+
+test('unparseable repo view and pr view output is reported', async () => {
+  stubGh(`if [ "$1" = "repo" ]; then printf '%s' 'not-json'; exit 0; fi\nexit 1`)
+  const repo = await loadTool().execute(
+    'id',
+    { operation: 'repo view' },
+    undefined,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(repo)).toMatch(/could not parse/)
+  const gh = stubGh(`if [ "$1" = "pr" ]; then printf '%s' 'not-json'; exit 0; fi\nexit 1`)
+  const pr = await loadTool().execute('id', { operation: 'pr view' }, undefined, undefined, readOnlyCtx(process.cwd()))
+  expect(resultText(pr)).toMatch(/could not parse/)
+  expect(gh.calls().length).toBeGreaterThan(0)
+})
+
 test('parseAuthHosts handles the hosts envelope and rejects junk', () => {
   expect(
     parseAuthHosts(JSON.stringify({ hosts: { 'github.com': [{ login: 'a', state: 'success', active: true }] } })),
@@ -376,15 +444,27 @@ test('pr view, repo view and URL helpers parse and format', () => {
     'repo',
   )
   expect(formatRepoView(repo)).toContain('public')
+  expect(must(parseRepoView(JSON.stringify({ defaultBranchRef: 'main' })), 'repo').defaultBranch).toBeUndefined()
+  expect(parseRepoView('nope')).toBeUndefined()
   expect(findPrUrl('created https://github.com/o/r/pull/7\n')).toBe('https://github.com/o/r/pull/7')
   expect(findPrUrl('nothing')).toBeUndefined()
 })
 
-test('arg builders stay deterministic', () => {
+test('git log output round-trips through gitLogArgs and parseCommits', () => {
+  const cwd = initRepo()
+  writeFileSync(join(cwd, 'c.txt'), 'c\n')
+  git(cwd, ['add', 'c.txt'])
+  git(cwd, ['commit', '-m', 'add c', '-m', 'why c'])
+  const commits = parseCommits(git(cwd, gitLogArgs('main')))
+  expect(commits[0]).toEqual({ subject: 'add c', body: 'why c' })
+  expect(commits).toHaveLength(2)
+})
+
+test('arg builders pin the exact JSON field lists', () => {
   expect(authArgs(true)).toEqual(['auth', 'status', '--json', 'hosts'])
-  expect(prViewArgs('12')).toEqual(['pr', 'view', '12', '--json', expect.any(String)])
-  expect(prChecksArgs(undefined)).toEqual(['pr', 'checks', '--json', expect.any(String)])
-  expect(repoViewArgs()).toEqual(['repo', 'view', '--json', expect.any(String)])
+  expect(prViewArgs('12')).toEqual(['pr', 'view', '12', '--json', PR_VIEW_FIELDS.join(',')])
+  expect(prChecksArgs(undefined)).toEqual(['pr', 'checks', '--json', PR_CHECKS_FIELDS.join(',')])
+  expect(repoViewArgs()).toEqual(['repo', 'view', '--json', REPO_VIEW_FIELDS.join(',')])
   expect(prCreateArgs({ title: 't', body: 'b', base: 'main' })).toEqual([
     'pr',
     'create',
@@ -396,5 +476,6 @@ test('arg builders stay deterministic', () => {
     'main',
   ])
   expect(prEditArgs('12', { title: 't' })).toEqual(['pr', 'edit', '12', '--title', 't'])
-  expect(gitLogArgs('main')[2]).toBe('main..HEAD')
+  expect(gitLogArgs('main')).toContain('main..HEAD')
+  expect(gitLogArgs('main')).toContain('-n')
 })

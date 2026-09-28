@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
+import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { expect } from 'vitest'
 
 import type { Reports } from '../agent/extensions/verification/report.ts'
@@ -48,6 +49,106 @@ export function must<T>(value: T | null | undefined, what: string): T {
 
 export function asMock<T>(value: unknown): T {
   return value as unknown as T
+}
+
+export interface ToolResult {
+  content: { type: string; text: string }[]
+  details: unknown
+}
+
+export interface RegisteredTool {
+  name: string
+  promptSnippet?: string
+  promptGuidelines?: string[]
+  execute(
+    id: string,
+    params: unknown,
+    signal: undefined,
+    onUpdate: undefined,
+    ctx: ExtensionContext,
+  ): Promise<ToolResult>
+}
+
+export function loadRegisteredTool(register: (pi: ExtensionAPI) => void): RegisteredTool {
+  let tool: RegisteredTool | undefined
+  register(
+    asMock<ExtensionAPI>({
+      registerTool: (t: unknown) => {
+        tool = asMock<RegisteredTool>(t)
+      },
+    }),
+  )
+  return must(tool, 'registered tool')
+}
+
+export function toolResultText(result: ToolResult): string {
+  return must(result.content[0], 'tool result content').text
+}
+
+export function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`
+}
+
+export function readLines(path: string): string[] {
+  try {
+    return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+export interface Stub {
+  restore(): void
+  calls(): string[]
+}
+
+export interface StubOnPath extends Stub {
+  dir: string
+  logPath: string
+}
+
+// Each test file runs in its own vitest worker, so mutating the process-global
+// PATH here does not leak into other files. Keep PATH mutation inside this
+// module's tracker and restore it in a per-file afterEach.
+const pathStubs: Stub[] = []
+
+export function stubOnPath(name: string, script: string): StubOnPath {
+  const dir = mkdtempSync(join(tmpdir(), `stub-${name}-`))
+  const logPath = join(dir, 'calls.log')
+  const file = join(dir, name)
+  writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${shellQuote(logPath)}\n${script}\n`)
+  chmodSync(file, 0o755)
+  const previous = process.env.PATH ?? ''
+  process.env.PATH = `${dir}:${previous}`
+  const stub: StubOnPath = {
+    dir,
+    logPath,
+    restore: () => {
+      process.env.PATH = previous
+    },
+    calls: () => readLines(logPath),
+  }
+  pathStubs.push(stub)
+  return stub
+}
+
+export function restrictPath(dir: string): void {
+  const previous = process.env.PATH ?? ''
+  process.env.PATH = dir
+  pathStubs.push({
+    restore: () => {
+      process.env.PATH = previous
+    },
+    calls: () => [],
+  })
+}
+
+export function emptyPathDir(): string {
+  return mkdtempSync(join(tmpdir(), 'empty-path-'))
+}
+
+export function restorePathStubs(): void {
+  for (const stub of pathStubs.splice(0).reverse()) stub.restore()
 }
 
 export function git(cwd: string, args: string[]): string {

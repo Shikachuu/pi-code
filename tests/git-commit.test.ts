@@ -1,45 +1,25 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { afterEach, expect, test } from 'vitest'
 
 import register from '../agent/extensions/git-commit/index.ts'
-import { COMMIT_TYPES, renderRules, validateSubject } from '../agent/extensions/git-commit/message.ts'
-import { asMock, git, must } from './helpers.ts'
+import { COMMIT_TYPES, isPastTense, renderRules, validateSubject } from '../agent/extensions/git-commit/message.ts'
+import {
+  asMock,
+  emptyPathDir,
+  git,
+  loadRegisteredTool,
+  restrictPath,
+  restorePathStubs,
+  shellQuote,
+  stubOnPath,
+  toolResultText as resultText,
+} from './helpers.ts'
 
-interface ToolResult {
-  content: { type: string; text: string }[]
-  details: unknown
-}
-
-interface Tool {
-  name: string
-  promptSnippet?: string
-  promptGuidelines?: string[]
-  execute(
-    id: string,
-    params: unknown,
-    signal: undefined,
-    onUpdate: undefined,
-    ctx: ExtensionContext,
-  ): Promise<ToolResult>
-}
-
-function loadTool(): Tool {
-  let tool: Tool | undefined
-  register(
-    asMock<ExtensionAPI>({
-      registerTool: (t: unknown) => {
-        tool = asMock<Tool>(t)
-      },
-    }),
-  )
-  return must(tool, 'commit tool')
-}
-
-const resultText = (result: ToolResult): string => must(result.content[0], 'tool result content').text
+const loadTool = () => loadRegisteredTool(register)
 
 function ctx(cwd: string, confirm = true): ExtensionContext {
   return asMock<ExtensionContext>({
@@ -49,47 +29,15 @@ function ctx(cwd: string, confirm = true): ExtensionContext {
   })
 }
 
-interface Stub {
-  restore(): void
-  calls(): string[]
-  pushes(): string[]
-}
+afterEach(restorePathStubs)
 
-const stubs: Stub[] = []
-afterEach(() => {
-  for (const stub of stubs.splice(0).reverse()) stub.restore()
-})
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`
-}
-
-function stubGit(): Stub {
+function stubGit() {
   const realGit = which('git')
-  const dir = mkdtempSync(join(tmpdir(), 'stub-git-'))
-  const logPath = join(dir, 'calls.log')
-  const file = join(dir, 'git')
-  writeFileSync(
-    file,
-    `#!/bin/sh\nprintf '%s\\n' "$*" >> ${shellQuote(logPath)}\nprintf '%s\\n' "$1" >> ${shellQuote(join(dir, 'first.log'))}\nexec ${shellQuote(realGit)} "$@"\n`,
-  )
-  chmodSync(file, 0o755)
-  const previous = process.env.PATH ?? ''
-  process.env.PATH = `${dir}:${previous}`
-  const read = (path: string): string[] => {
-    try {
-      return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean)
-    } catch {
-      return []
-    }
+  const stub = stubOnPath('git', `exec ${shellQuote(realGit)} "$@"`)
+  return {
+    ...stub,
+    pushes: () => stub.calls().filter((call) => call.startsWith('push')),
   }
-  const stub: Stub = {
-    restore: () => (process.env.PATH = previous),
-    calls: () => read(logPath),
-    pushes: () => read(join(dir, 'first.log')).filter((first) => first === 'push'),
-  }
-  stubs.push(stub)
-  return stub
 }
 
 function which(bin: string): string {
@@ -251,4 +199,105 @@ test('a headless push confirmation returns guidance and does not push', async ()
   const result = await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, headless)
   expect(resultText(result)).toMatch(/commit is local/)
   expect(stub.pushes()).toEqual([])
+})
+
+test('a rejected push surfaces the failure and keeps the commit local', async () => {
+  const cwd = repoWithRemote()
+  stage(cwd, 'b.txt', 'b\n')
+  const realGit = which('git')
+  stubOnPath(
+    'git',
+    `if [ "$1" = "push" ]; then printf '%s\\n' "rejected: non-fast-forward" >&2; exit 1; fi\nexec ${shellQuote(realGit)} "$@"`,
+  )
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/git push failed with exit code 1/)
+  expect(resultText(result)).toContain('rejected: non-fast-forward')
+  expect(resultText(result)).toContain('The commit stays local.')
+  expect(git(cwd, ['rev-list', '--count', 'origin/main..HEAD'])).toBe('1')
+})
+
+test('push with no remote leaves the commit local', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add more', push: true },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/No git remote is configured/)
+})
+
+test('the staged diff ignores an external diff tool', async () => {
+  const cwd = initRepo()
+  git(cwd, ['config', 'diff.external', 'false'])
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const result = await loadTool().execute('id', {}, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toContain('Staged diff:')
+  expect(resultText(result)).toContain('+more')
+})
+
+test('a failing git commit surfaces the hook error and leaves HEAD unchanged', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const hook = join(cwd, '.git', 'hooks', 'pre-commit')
+  writeFileSync(hook, '#!/bin/sh\nprintf "%s\\n" "pre-commit says no" >&2\nexit 1\n')
+  chmodSync(hook, 0o755)
+  const before = git(cwd, ['rev-parse', 'HEAD'])
+  const result = await loadTool().execute('id', { message: 'feat: add more' }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toMatch(/git commit failed with exit code/)
+  expect(resultText(result)).toContain('pre-commit says no')
+  expect(git(cwd, ['rev-parse', 'HEAD'])).toBe(before)
+})
+
+test('a multi-line message keeps the subject hints and commits the body', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add more\n\nwhy it matters' },
+    undefined,
+    undefined,
+    ctx(cwd),
+  )
+  expect(resultText(result)).toContain('Committed:')
+  expect(git(cwd, ['log', '-1', '--format=%B'])).toBe('feat: add more\n\nwhy it matters')
+})
+
+test('commit reports a missing git binary', async () => {
+  restrictPath(emptyPathDir())
+  const result = await loadTool().execute('id', {}, undefined, undefined, ctx(tmpdir()))
+  expect(resultText(result)).toMatch(/git \(not found on PATH\)/)
+})
+
+test('a message with shell metacharacters is committed verbatim', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const marker = join(cwd, 'pwned')
+  const message = `chore: add $(touch ${marker}) and \`touch ${marker}2\` ; rm`
+  const result = await loadTool().execute('id', { message }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toContain('Committed:')
+  expect(existsSync(marker)).toBe(false)
+  expect(existsSync(`${marker}2`)).toBe(false)
+  expect(git(cwd, ['log', '-1', '--format=%s'])).toBe(message.split('\n')[0])
+})
+
+test('the past-tense heuristic and its named-pipe false positive are explicit', () => {
+  expect(isPastTense('moved the parser')).toBe(true)
+  expect(isPastTense('named pipe support')).toBe(true)
+  expect(isPastTense('move the parser')).toBe(false)
+  expect(validateSubject('feat: moved the parser').join('\n')).toMatch(/present tense/)
+})
+
+test('subjects without a usable type return the format hint', () => {
+  for (const subject of ['feat:', 'feat:   ', '   ']) {
+    expect(validateSubject(subject).join('\n')).toMatch(/must match/)
+  }
 })

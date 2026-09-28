@@ -14,7 +14,6 @@ export const COMMIT_GUIDELINES = [
   'Show the commit message in your reply for transparency, and set push true only after the user agrees to push.',
 ]
 
-/** The message rules as bullet text, included in the staged-diff readout. */
 export function renderRules(): string {
   return COMMIT_RULES.map((rule) => `- ${rule}`).join('\n')
 }
@@ -29,8 +28,7 @@ export function isPastTense(summary: string): boolean {
 }
 
 /**
- * Advisory hints for a commit subject. An empty array means the subject follows
- * the rules; a non-empty array never blocks the commit.
+ * Advisory hints for a commit subject. A non-empty array never blocks the commit.
  */
 export function validateSubject(subject: string): string[] {
   const hints: string[] = []
