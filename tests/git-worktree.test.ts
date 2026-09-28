@@ -226,6 +226,81 @@ test('worktree remove maps force and keepBranch to wt flags and runs in the fore
   expect(wt2.calls().some((call) => call === 'remove feature --no-delete-branch --foreground')).toBe(true)
 })
 
+test('worktree remove reports the removed worktree when the follow-up list drops it', async () => {
+  const marker = join(mkdtempSync(join(tmpdir(), 'wt-remove-')), 'removed')
+  const before = { schema: 2, items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }] }
+  stubOnPath(
+    'wt',
+    [
+      `if [ "$1" = "remove" ]; then touch ${shellQuote(marker)}; exit 0; fi`,
+      `if [ "$1" = "list" ]; then`,
+      `  if [ -f ${shellQuote(marker)} ]; then printf '%s' ${shellQuote(JSON.stringify({ schema: 2, items: [] }))}; else printf '%s' ${shellQuote(JSON.stringify(before))}; fi`,
+      'fi',
+      'exit 0',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute('id', { operation: 'remove', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toBe('Removed the worktree for feature.')
+})
+
+test('worktree remove reports the fallback when the follow-up list still has the branch', async () => {
+  const wt = stubList({
+    schema: 2,
+    items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }],
+  })
+  const result = await loadTool().execute('id', { operation: 'remove', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/run operation "list" to see the current state/)
+  expect(wt.calls().filter((call) => call.startsWith('list'))).toHaveLength(2)
+})
+
+test('a declined worktree remove never runs wt remove', async () => {
+  const wt = stubList({
+    schema: 2,
+    items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }],
+  })
+  const declined = asMock<ExtensionContext>({
+    cwd: tmpdir(),
+    hasUI: true,
+    ui: { confirm: async () => false, notify: () => {} },
+  })
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'remove', branch: 'feature' },
+    undefined,
+    undefined,
+    declined,
+  )
+  expect(resultText(result)).toMatch(/declined/)
+  expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
+})
+
+test('worktree refuses to remove the worktree it is running in unless forced', async () => {
+  const wt = stubList({
+    schema: 2,
+    items: [{ branch: 'feature', worktree: { path: tmpdir(), current: true } }],
+  })
+  const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/Refusing to remove/)
+  expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
+})
+
+test('worktree remove refuses without a UI and never runs wt remove', async () => {
+  const wt = stubList({
+    schema: 2,
+    items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }],
+  })
+  const headless = asMock<ExtensionContext>({ cwd: tmpdir(), hasUI: false, ui: {} })
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'remove', branch: 'feature' },
+    undefined,
+    undefined,
+    headless,
+  )
+  expect(resultText(result)).toMatch(/no interactive UI/)
+  expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
+})
+
 test('worktree remove needs a branch when no worktree is current', async () => {
   const wt = stubList({ schema: 2, items: [{ branch: 'main', worktree: { path: '/repo' } }] })
   const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, ctx())

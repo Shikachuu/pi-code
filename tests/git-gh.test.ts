@@ -39,6 +39,7 @@ import {
   shellQuote,
   stubOnPath,
   toolResultText as resultText,
+  which,
 } from './helpers.ts'
 
 const loadTool = () => loadRegisteredTool(register)
@@ -275,7 +276,52 @@ test('pr create needs a base branch when neither main nor master exists', async 
     undefined,
     ctx(cwd, true),
   )
-  expect(resultText(result)).toMatch(/Could not find a base branch/)
+  expect(resultText(result)).toMatch(/Could not find base branch/)
+  expect(gh.calls()).toEqual([])
+})
+
+test('pr create honours an explicit base', async () => {
+  const cwd = initRepo()
+  git(cwd, ['branch', 'trunk'])
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'https://github.com/o/r/pull/1'; exit 0; fi\nexit 1`,
+  )
+  await loadTool().execute(
+    'id',
+    { operation: 'pr create', base: 'trunk', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(gh.calls().join('\n')).toContain('--base trunk')
+})
+
+test('pr create needs a title when there are no commits ahead of the base', async () => {
+  const cwd = initRepo()
+  git(cwd, ['checkout', 'main'])
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute('id', { operation: 'pr create' }, undefined, undefined, ctx(cwd, true))
+  expect(resultText(result)).toMatch(/needs a title/)
+  expect(gh.calls()).toEqual([])
+})
+
+test('pr create surfaces a git log failure and never calls gh', async () => {
+  const cwd = initRepo()
+  const realGit = which('git')
+  stubOnPath(
+    'git',
+    `if [ "$1" = "log" ]; then printf '%s\\n' "log broke" >&2; exit 1; fi\nexec ${shellQuote(realGit)} "$@"`,
+  )
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/git log failed with exit code 1/)
+  expect(resultText(result)).toContain('log broke')
   expect(gh.calls()).toEqual([])
 })
 

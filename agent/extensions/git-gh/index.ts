@@ -42,8 +42,10 @@ const NO_UI =
 
 async function resolveBase(cwd: string, requested: string | undefined, signal: AbortSignal | undefined) {
   for (const candidate of requested ? [requested] : ['main', 'master']) {
-    const check = await run('git', ['rev-parse', '--verify', candidate], { cwd, signal })
-    if (check.ok) return candidate
+    const local = await run('git', ['rev-parse', '--verify', candidate], { cwd, signal })
+    if (local.ok) return candidate
+    const remote = await run('git', ['rev-parse', '--verify', `refs/remotes/origin/${candidate}`], { cwd, signal })
+    if (remote.ok) return candidate
   }
   return undefined
 }
@@ -123,8 +125,9 @@ export default function (pi: ExtensionAPI) {
           if (!ctx.hasUI) return text(NO_UI)
           const base = await resolveBase(cwd, params.base, signal)
           if (!base) {
+            const looked = params.base ? `"${params.base}"` : '(main or master)'
             return text(
-              'Could not find a base branch (main or master). Pass base explicitly or create the branch first.',
+              `Could not find base branch ${looked} as a local or origin ref. Create it or pass a valid base.`,
             )
           }
           const log = await run('git', gitLogArgs(base), { cwd, signal })

@@ -1,6 +1,10 @@
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { expect, test } from 'vitest'
 
-import { run } from '../agent/extensions/lib/exec.ts'
+import { run, truncateOutput } from '../agent/extensions/lib/exec.ts'
 
 const node = process.execPath
 
@@ -29,4 +33,31 @@ test('run resolves rather than rejects on an aborted signal', async () => {
   controller.abort()
   const result = await run(node, ['-e', 'setTimeout(() => {}, 5000)'], { signal: controller.signal })
   expect(result.ok).toBe(false)
+})
+
+test('run blames a missing cwd rather than reporting a missing binary', async () => {
+  const missing = join(mkdtempSync(join(tmpdir(), 'exec-cwd-')), 'gone')
+  const result = await run(node, ['-e', 'process.exit(0)'], { cwd: missing })
+  expect(result.ok).toBe(false)
+  expect(result.missing).toBe(false)
+  expect(result.stderr).toContain('working directory does not exist')
+  expect(result.stderr).toContain(missing)
+})
+
+test('run resolves when cwd is a file instead of a directory', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'exec-file-'))
+  const file = join(dir, 'not-a-dir')
+  writeFileSync(file, 'x')
+  const result = await run(node, ['-e', 'process.exit(0)'], { cwd: file })
+  expect(result.ok).toBe(false)
+  expect(result.missing).toBe(false)
+})
+
+test('truncateOutput returns short input unchanged', () => {
+  expect(truncateOutput('one\ntwo')).toBe('one\ntwo')
+})
+
+test('truncateOutput keeps the tail and pins the notice', () => {
+  const text = ['a', 'b', 'c', 'd', 'e'].join('\n')
+  expect(truncateOutput(text, 3)).toBe('c\nd\ne\n\n[... truncated; showing the last 3 of 5 lines]')
 })

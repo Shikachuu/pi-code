@@ -17,6 +17,7 @@ import {
   shellQuote,
   stubOnPath,
   toolResultText as resultText,
+  which,
 } from './helpers.ts'
 
 const loadTool = () => loadRegisteredTool(register)
@@ -38,15 +39,6 @@ function stubGit() {
     ...stub,
     pushes: () => stub.calls().filter((call) => call.startsWith('push')),
   }
-}
-
-function which(bin: string): string {
-  for (const dir of (process.env.PATH ?? '').split(':')) {
-    if (!dir) continue
-    const candidate = join(dir, bin)
-    if (existsSync(candidate)) return candidate
-  }
-  throw new Error(`cannot find ${bin} on PATH`)
 }
 
 function initRepo(): string {
@@ -191,6 +183,20 @@ test('a confirmed push sends the commit to the remote', async () => {
   expect(git(cwd, ['rev-list', '--count', 'origin/feature..HEAD'])).toBe('0')
 })
 
+test('push targets the branch upstream remote rather than the first remote', async () => {
+  const cwd = repoWithRemote()
+  const upstreamRemote = mkdtempSync(join(tmpdir(), 'commit-upstream-'))
+  git(upstreamRemote, ['init', '--bare'])
+  git(cwd, ['remote', 'add', 'upstream', upstreamRemote])
+  git(cwd, ['push', '--set-upstream', 'upstream', 'feature'])
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, ctx(cwd, true))
+  const pushes = stub.pushes()
+  expect(pushes.some((call) => call.includes('upstream feature'))).toBe(true)
+  expect(pushes.some((call) => call.includes('origin feature'))).toBe(false)
+})
+
 test('a headless push confirmation returns guidance and does not push', async () => {
   const cwd = repoWithRemote()
   stage(cwd, 'b.txt', 'b\n')
@@ -315,7 +321,7 @@ test('a non-repository cwd reports a bounded git diff failure', async () => {
   const cwd = mkdtempSync(join(tmpdir(), 'commit-nonrepo-'))
   const result = await loadTool().execute('id', {}, undefined, undefined, ctx(cwd))
   const text = resultText(result)
-  expect(text).toMatch(/git diff --cached failed with exit code/)
+  expect(text).toMatch(/git diff --cached .*failed with exit code/)
   expect(text.length).toBeLessThan(4000)
 })
 

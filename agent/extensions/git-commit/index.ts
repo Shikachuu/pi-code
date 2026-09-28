@@ -15,30 +15,17 @@ const NOTHING_STAGED = 'Nothing is staged. Stage the files you want with git add
 
 type Staged = { ok: true; hasChanges: boolean; text: string } | { ok: false; error: string }
 
-async function readStaged(cwd: string, signal: AbortSignal | undefined): Promise<Staged> {
-  const result = await run('git', ['diff', '--cached', '--no-ext-diff'], { cwd, signal })
+async function stagedDiff(cwd: string, signal: AbortSignal | undefined, extra: string[]): Promise<Staged> {
+  const args = ['diff', '--cached', ...extra, '--no-ext-diff']
+  const result = await run('git', args, { cwd, signal })
   if (result.missing) return { ok: false, error: `git (not found on PATH): ${result.stderr.trim()}` }
   if (!result.ok) {
     return {
       ok: false,
-      error: `git diff --cached failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
+      error: `git ${args.join(' ')} failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
     }
   }
   return { ok: true, hasChanges: result.stdout.trim().length > 0, text: result.stdout }
-}
-
-// Message mode only needs to know whether anything is staged, so list names
-// instead of materialising a potentially large diff.
-async function hasStaged(cwd: string, signal: AbortSignal | undefined): Promise<Staged> {
-  const result = await run('git', ['diff', '--cached', '--name-only', '--no-ext-diff'], { cwd, signal })
-  if (result.missing) return { ok: false, error: `git (not found on PATH): ${result.stderr.trim()}` }
-  if (!result.ok) {
-    return {
-      ok: false,
-      error: `git diff --cached failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
-    }
-  }
-  return { ok: true, hasChanges: result.stdout.trim().length > 0, text: '' }
 }
 
 export default function (pi: ExtensionAPI) {
@@ -56,7 +43,7 @@ export default function (pi: ExtensionAPI) {
       const cwd = ctx.cwd
 
       if (!params.message) {
-        const staged = await readStaged(cwd, signal)
+        const staged = await stagedDiff(cwd, signal, [])
         if (!staged.ok) return text(staged.error)
         if (!staged.hasChanges) return text(NOTHING_STAGED)
         return text(
@@ -64,7 +51,7 @@ export default function (pi: ExtensionAPI) {
         )
       }
 
-      const staged = await hasStaged(cwd, signal)
+      const staged = await stagedDiff(cwd, signal, ['--name-only'])
       if (!staged.ok) return text(staged.error)
       if (!staged.hasChanges) return text(NOTHING_STAGED)
 
@@ -87,8 +74,16 @@ export default function (pi: ExtensionAPI) {
 
       const branchResult = await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, signal })
       const branch = branchResult.ok ? branchResult.stdout.trim() : '(unknown)'
-      const remoteResult = await run('git', ['remote'], { cwd, signal })
-      const remote = remoteResult.ok ? (remoteResult.stdout.split('\n').find((line) => line.trim()) ?? '').trim() : ''
+      const upstreamResult = await run('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], {
+        cwd,
+        signal,
+      })
+      const hasUpstream = upstreamResult.ok && upstreamResult.stdout.trim().includes('/')
+      let remote = hasUpstream ? (upstreamResult.stdout.trim().split('/')[0] ?? '') : ''
+      if (!remote) {
+        const remoteResult = await run('git', ['remote'], { cwd, signal })
+        remote = remoteResult.ok ? (remoteResult.stdout.split('\n').find((line) => line.trim()) ?? '').trim() : ''
+      }
       if (!remote) {
         return text(`Committed:\n${summary}${hintText}\n\nNo git remote is configured, so nothing was pushed.`)
       }
@@ -101,7 +96,8 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) {
         return text(`Committed:\n${summary}${hintText}\n\nPush declined; the commit stays local.`)
       }
-      const push = await run('git', ['push', '--set-upstream', remote, branch], { cwd, signal })
+      const pushArgs = hasUpstream ? ['push', remote, branch] : ['push', '--set-upstream', remote, branch]
+      const push = await run('git', pushArgs, { cwd, signal })
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {
         return text(

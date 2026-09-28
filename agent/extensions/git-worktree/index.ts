@@ -3,6 +3,7 @@ import { Type } from 'typebox'
 
 import { run } from '../lib/exec.ts'
 import {
+  describeChanges,
   existingWorktreeError,
   findByBranch,
   findCurrent,
@@ -129,6 +130,24 @@ export default function (pi: ExtensionAPI) {
           if (!loaded.ok) return text(loaded.error)
           const branch = params.branch?.trim() || findCurrent(loaded.envelope)?.branch
           if (!branch) return text('worktree remove needs a branch when there is no current worktree.')
+          const target = findByBranch(loaded.envelope, branch)
+          const ownsCwd = target !== undefined && (target.path === cwd || cwd.startsWith(`${target.path}/`))
+          if (ownsCwd && !params.force) {
+            return text(
+              `Refusing to remove ${target.path}: it is the worktree this session is running in. Pass force true to override.`,
+            )
+          }
+          if (!ctx.hasUI) {
+            return text(
+              'Error: no interactive UI; removing a worktree deletes files and its branch. Ask the user to run `wt remove` themselves.',
+            )
+          }
+          const watched = target ? `${target.branch} (${target.path}, ${describeChanges(target.changes)})` : branch
+          const confirmed = await ctx.ui.confirm(
+            'Remove worktree',
+            `Remove ${watched}? wt deletes the branch unless keepBranch is set.`,
+          )
+          if (!confirmed) return text(`Remove of ${branch} declined; nothing was removed.`)
           const args = ['remove', branch]
           if (params.force) args.push('-f')
           if (params.keepBranch) args.push('--no-delete-branch')

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -145,6 +145,15 @@ export function restrictPath(dir: string): void {
 
 export function emptyPathDir(): string {
   return mkdtempSync(join(tmpdir(), 'empty-path-'))
+}
+
+export function which(bin: string): string {
+  for (const dir of (process.env.PATH ?? '').split(':')) {
+    if (!dir) continue
+    const candidate = join(dir, bin)
+    if (existsSync(candidate)) return candidate
+  }
+  throw new Error(`cannot find ${bin} on PATH`)
 }
 
 export function restorePathStubs(): void {
