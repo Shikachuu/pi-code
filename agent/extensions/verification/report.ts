@@ -1,9 +1,9 @@
 import { join } from 'node:path'
 
-import { renderTemplate } from '../lib/jinja.ts'
+import { renderTemplate, templatePath } from '../lib/jinja.ts'
 import type { Scope } from './scope.ts'
 
-const SUMMARY_TEMPLATE = join(import.meta.dirname, 'templates', 'verification-summary.jinja')
+const SUMMARY_TEMPLATE = templatePath(join(import.meta.dirname, 'templates'), 'verification-summary')
 
 const str = { type: 'string' } as const
 const strList = { type: 'array', items: str } as const

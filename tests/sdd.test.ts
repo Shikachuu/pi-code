@@ -214,6 +214,22 @@ test('renderResearch writes the fixed format with deduplicated sources', () => {
   expect(md).toMatch(/## Open questions\n\n- None/)
 })
 
+test('renderResearch renders - None under every empty list', () => {
+  const md = renderResearch({
+    question: 'Q',
+    summary: 'S',
+    findings: [],
+    implications: [],
+    recommendation: 'R',
+    openQuestions: [],
+  })
+  expect(md.match(/- None/g)?.length).toBe(4)
+  expect(md).toMatch(/## Findings\n\n- None/)
+  expect(md).toMatch(/## Implications for this feature\n\n- None/)
+  expect(md).toMatch(/## Open questions\n\n- None/)
+  expect(md).toMatch(/## Sources\n\n- None/)
+})
+
 test('every workflow script parses', () => {
   for (const script of [SINGLE_SCRIPT, ENRICH_SCRIPT, DISCOVERY_SCRIPT, RESEARCH_SCRIPT]) {
     expect(parseWorkflowScript(script).meta.name.startsWith('sdd_')).toBe(true)
@@ -1192,6 +1208,10 @@ test('section scanning and demoteHeadings both ignore `##` lines inside code fen
   expect(demoted).toContain('```bash\n## not a heading\n# nope\n```')
   expect(demoted).toContain('### Section')
   expect(demoted).toContain('### Next')
+})
+
+test('demoteHeadings shifts h1 down one level and leaves h6 alone', () => {
+  expect(demoteHeadings('# H1\n###### H6\n##### H5')).toBe('## H1\n###### H6\n###### H5')
 })
 
 test('replaceSection replaces in place and appends a missing section with one trailing newline', () => {

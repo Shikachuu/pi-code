@@ -351,6 +351,17 @@ test('renderSummary reports a missing agent by name', () => {
   expect(md).toMatch(/comment-auditor did not return a report/)
 })
 
+test('renderSummary reports missing test-engineer and code-reviewer under both their headings', () => {
+  const noEngineer = renderSummary(baseScope(), reports({ testEngineer: null }))
+  expect(noEngineer).toMatch(/### Coverage Gaps \(from test-engineer\)\ntest-engineer did not return a report/)
+  expect(noEngineer).toMatch(/### Smoke Test Result \(from test-engineer\)\ntest-engineer did not return a report/)
+  expect(noEngineer).toMatch(/\*\*Verdict:\*\* REQUEST CHANGES/)
+
+  const noReviewer = renderSummary(baseScope(), reports({ codeReviewer: null }))
+  expect(noReviewer).toMatch(/### Verification Story \(from code-reviewer\)\ncode-reviewer did not return a report/)
+  expect(noReviewer).toMatch(/\*\*Verdict:\*\* REQUEST CHANGES/)
+})
+
 test('renderSummary renders finding arrows, blocked smoke tests and audit arrows', () => {
   const md = renderSummary(
     baseScope(),

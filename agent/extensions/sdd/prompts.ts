@@ -1,14 +1,12 @@
 import { join } from 'node:path'
 
-import { renderTemplate } from '../lib/jinja.ts'
+import { renderTemplate, templatePath } from '../lib/jinja.ts'
 
 const TEMPLATES = join(import.meta.dirname, 'templates')
 
-const template = (name: string) => join(TEMPLATES, `${name}.jinja`)
+export const SPEC_TEMPLATE = renderTemplate(templatePath(TEMPLATES, 'spec-template'))
 
-export const SPEC_TEMPLATE = renderTemplate(template('spec-template'))
-
-export const PLAN_TEMPLATE = renderTemplate(template('plan-template'))
+export const PLAN_TEMPLATE = renderTemplate(templatePath(TEMPLATES, 'plan-template'))
 
 export interface ResearchReport {
   question: string
@@ -48,8 +46,6 @@ export function readSection(markdown: string, heading: string): string | undefin
   )
 }
 
-// A section body must not carry its own `##` heading, or sectionBounds reads it
-// as the end of the section it is being written into.
 export function demoteHeadings(markdown: string): string {
   let fenced = false
   return markdown
@@ -87,7 +83,7 @@ export function validatePlan(markdown: string): string[] {
 
 export function renderResearch(report: ResearchReport): string {
   const sources = [...new Set(report.findings.flatMap((f) => f.sources))]
-  return renderTemplate(template('research-report'), {
+  return renderTemplate(templatePath(TEMPLATES, 'research-report'), {
     report: {
       question: report.question,
       summary: report.summary,
@@ -111,11 +107,11 @@ export interface PlanPromptInput {
 
 export function planPrompt(input: PlanPromptInput): string {
   const research = input.research.map((r) => `<research path="${r.path}">\n${r.content}\n</research>`).join('\n\n')
-  return renderTemplate(template('plan-prompt'), {
+  return renderTemplate(templatePath(TEMPLATES, 'plan-prompt'), {
     slug: input.slug,
     dir: input.dir,
     spec: input.spec,
-    discovery: input.discovery ?? '',
+    discovery: input.discovery ?? 'No discovery was run.',
     research,
     memory: input.memory,
     planTemplate: PLAN_TEMPLATE,
@@ -130,7 +126,7 @@ export interface ImplementPromptInput {
 }
 
 export function implementPrompt(input: ImplementPromptInput): string {
-  return renderTemplate(template('implement-prompt'), {
+  return renderTemplate(templatePath(TEMPLATES, 'implement-prompt'), {
     slug: input.slug,
     plan: input.plan,
     planPath: input.planPath,

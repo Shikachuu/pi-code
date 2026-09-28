@@ -1,26 +1,27 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { Template } from '@huggingface/jinja'
 
 const cache = new Map<string, Template>()
 
-// Templates are tracked source read at runtime. A missing or unreadable file must
-// fail loudly: rendering an empty prompt would silently ship a broken agent.
+export function templatePath(dir: string, name: string): string {
+  return join(dir, `${name}.jinja`)
+}
+
 export function renderTemplate(path: string, context: Record<string, unknown> = {}): string {
   let template = cache.get(path)
   if (!template) {
-    let source: string
+    const source = readFileSync(path, 'utf8')
     try {
-      source = readFileSync(path, 'utf8')
+      template = new Template(source)
     } catch (error) {
-      throw new Error(`cannot read template ${path}: ${(error as Error).message}`)
+      throw new Error(`cannot parse template ${path}: ${(error as Error).message}`)
     }
-    template = new Template(source)
     cache.set(path, template)
   }
   const rendered = template.render(context)
-  // The library strips a trailing newline from the source before parsing, so a
-  // rendered loop or variable still ends with one. Jinja's keep_trailing_newline
-  // default is false, so strip it from the output too.
+  // @huggingface/jinja strips one trailing newline from the source before
+  // parsing, so a template ending in a loop or variable still renders one.
   return rendered.endsWith('\n') ? rendered.slice(0, -1) : rendered
 }

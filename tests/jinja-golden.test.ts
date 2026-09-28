@@ -166,6 +166,14 @@ test('renderSummary matches the pre-port goldens with and without a missing agen
 })
 
 test('rendered prompts contain no unrendered template syntax', () => {
+  const enrichment = {
+    scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
+    repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
+    questions: { questions: [] },
+  }
+  const enrich = enrichArgs('add a phone field', MEMORY)
+  const discovery = discoveryArgs(SPEC, undefined, MEMORY)
+  const research = researchArgs('phone validation', SPEC, DISCOVERY)
   const rendered = [
     SPEC_TEMPLATE,
     PLAN_TEMPLATE,
@@ -186,6 +194,19 @@ test('rendered prompts contain no unrendered template syntax', () => {
       recommendation: 'R',
       openQuestions: [],
     }),
+    enrich.scope.prompt,
+    enrich.repo.prompt,
+    enrich.questions.prompt,
+    draftArgs({ request: 'add phone', enrichment, answers: '', memory: MEMORY }).prompt,
+    discovery.plan.prompt,
+    discovery.probe.prompt,
+    discovery.synth.prompt,
+    research.queries.prompt,
+    research.gather.prompt,
+    research.verify.prompt,
+    research.report.prompt,
+    renderSummary(SCOPE, reports()),
+    renderSummary(SCOPE, reports({ commentAuditor: null })),
   ]
   for (const text of rendered) {
     expect(text).not.toContain('{{')

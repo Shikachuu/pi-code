@@ -1,11 +1,9 @@
 import { join } from 'node:path'
 
-import { renderTemplate } from '../lib/jinja.ts'
+import { renderTemplate, templatePath } from '../lib/jinja.ts'
 import { SPEC_TEMPLATE } from './prompts.ts'
 
 const TEMPLATES = join(import.meta.dirname, 'templates')
-
-const template = (name: string) => join(TEMPLATES, `${name}.jinja`)
 
 export const MAX_PROBES = 10
 
@@ -136,15 +134,15 @@ export interface EnrichResult {
 export function enrichArgs(request: string, memory: string) {
   return {
     scope: {
-      prompt: renderTemplate(template('enrich-scope'), { request, memory }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'enrich-scope'), { request, memory }),
       schema: obj({ goal: str, inScope: strList, nonGoals: strList, assumptions: strList }),
     },
     repo: {
-      prompt: renderTemplate(template('enrich-repo'), { request }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'enrich-repo'), { request }),
       schema: obj({ stack: str, areas: { type: 'array', items: obj({ path: str, why: str }) }, patterns: strList }),
     },
     questions: {
-      prompt: renderTemplate(template('enrich-questions'), { request, memory }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'enrich-questions'), { request, memory }),
       schema: QUESTION_SCHEMA,
     },
   }
@@ -161,7 +159,7 @@ export function draftArgs(input: {
   return {
     label: input.draft ? 'revise spec' : 'draft spec',
     tier: 'small',
-    prompt: renderTemplate(template('draft-prompt'), {
+    prompt: renderTemplate(templatePath(TEMPLATES, 'draft-prompt'), {
       request: input.request,
       enrichment: JSON.stringify(input.enrichment, null, 2),
       answers: input.answers,
@@ -184,7 +182,7 @@ export function discoveryArgs(spec: string, existing: string | undefined, memory
       hints: '',
     },
     plan: {
-      prompt: renderTemplate(template('discovery-plan'), { spec, memory, maxProbes: MAX_PROBES }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'discovery-plan'), { spec, memory, maxProbes: MAX_PROBES }),
       schema: obj({
         probes: {
           type: 'array',
@@ -199,12 +197,12 @@ export function discoveryArgs(spec: string, existing: string | undefined, memory
       }),
     },
     probe: {
-      prompt: renderTemplate(template('discovery-probe'), { spec }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'discovery-probe'), { spec }),
       web: WEB_TOOLS,
       schema: FINDINGS_SCHEMA,
     },
     synth: {
-      prompt: renderTemplate(template('discovery-synth'), { spec, existing: existing ?? '' }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'discovery-synth'), { spec, existing: existing ?? '' }),
       schema: obj({ markdown: str }),
     },
   }
@@ -215,21 +213,25 @@ export function researchArgs(topic: string, spec: string, discovery: string | un
     question: topic,
     angles: 4,
     queries: {
-      prompt: renderTemplate(template('research-queries'), { spec, discovery: discovery ?? '', topic }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'research-queries'), { spec, discovery: discovery ?? '', topic }),
       schema: obj({ queries: strList }),
     },
     gather: {
-      prompt: renderTemplate(template('research-gather')),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'research-gather'), { webTools: WEB_TOOLS }),
       schema: obj({ sources: { type: 'array', items: obj({ url: str, claims: strList }) } }),
     },
     verify: {
-      prompt: renderTemplate(template('research-verify')),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'research-verify')),
       schema: obj({ supported: { type: 'array', items: obj({ claim: str, sources: strList }) }, discarded: strList }, [
         'supported',
       ]),
     },
     report: {
-      prompt: renderTemplate(template('research-report-prompt'), { spec, discovery: discovery ?? '', topic }),
+      prompt: renderTemplate(templatePath(TEMPLATES, 'research-report-prompt'), {
+        spec,
+        discovery: discovery ?? '',
+        topic,
+      }),
       schema: obj({
         summary: str,
         findings: { type: 'array', items: obj({ claim: str, sources: strList }) },
