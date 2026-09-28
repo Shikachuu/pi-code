@@ -10,7 +10,14 @@ import { parseWorkflowScript, runWorkflow, WorkflowErrorCode } from '@quintinsha
 import { expect, test, vi } from 'vitest'
 
 import register from '../agent/extensions/sdd/index.ts'
-import { appendFindings, fixInstructions, readFindings, recurringSinceLessons } from '../agent/extensions/sdd/ledger.ts'
+import {
+  appendFindings,
+  fixInstructions,
+  markLessons,
+  priorFindings,
+  readFindings,
+  recurringSinceLessons,
+} from '../agent/extensions/sdd/ledger.ts'
 import { memoryBlock, parseEntries } from '../agent/extensions/sdd/memory.ts'
 import type { ProgressState } from '../agent/extensions/sdd/progress.ts'
 import {
@@ -230,13 +237,13 @@ test('reviewRubric fails loudly when an agent file loses a rubric section', () =
   expect(() => reviewRubric(dir)).toThrow('review rubric: comment-auditor has no "## Keep list"')
 })
 
-test('readFindings returns no rounds for a missing or corrupt ledger', () => {
+test('readFindings returns no runs for a missing or corrupt ledger', () => {
   const cwd = tmp()
   const { slug } = createFeature(cwd, 'phone', 'Phone')
   expect(readFindings(cwd, slug)).toEqual([])
   writeFileSync(join(featureDir(cwd, slug), 'findings.json'), '{not json')
   expect(readFindings(cwd, slug)).toEqual([])
-  writeFileSync(join(featureDir(cwd, slug), 'findings.json'), '{"rounds": "nope"}')
+  writeFileSync(join(featureDir(cwd, slug), 'findings.json'), '{"runs": "nope"}')
   expect(readFindings(cwd, slug)).toEqual([])
 })
 
@@ -250,14 +257,21 @@ test('fixInstructions groups blocking findings by category and ignores nits', ()
     fix: '',
     agents: ['code-reviewer'],
   })
-  expect(fixInstructions([finding('nit', 'naming', 'a.ts')])).toBe('')
-  const text = fixInstructions([
-    finding('important', 'untested-error-path', 'a.ts'),
-    finding('critical', 'untested-error-path', 'b.ts'),
-    finding('important', 'comment-must-kill', 'c.ts'),
-    finding('nit', 'naming', 'd.ts'),
-  ])
-  expect(text).toMatch(/search the whole diff/)
+  const commands = ['git diff master...HEAD', 'git diff HEAD']
+  expect(fixInstructions([finding('nit', 'naming', 'a.ts')], commands)).toBe('')
+  const text = fixInstructions(
+    [
+      finding('important', 'untested-error-path', 'a.ts'),
+      finding('critical', 'untested-error-path', 'b.ts'),
+      finding('important', 'comment-must-kill', 'c.ts'),
+      finding('nit', 'naming', 'd.ts'),
+    ],
+    commands,
+  )
+  expect(text, 'the sweep uses the resolved scope, not a hardcoded main').toMatch(
+    /search the whole verify scope \(`git diff master\.\.\.HEAD`, `git diff HEAD`\)/,
+  )
+  expect(text).not.toContain('main')
   expect(text).toContain('- untested-error-path (2): a.ts:1, b.ts:1\n- comment-must-kill (1): c.ts:1')
   expect(text).not.toContain('naming')
 })
@@ -891,7 +905,7 @@ test('sdd_verify records every round in the ledger and feeds the last blocking f
   const gate = () => tool(tools, 'sdd_verify').execute('id', { feature: slug }, undefined, undefined, fakeCtx(cwd).ctx)
   await withAgentDir(cwd, async () => {
     const first = toolText(await gate())
-    expect(first).toMatch(/search the whole diff/)
+    expect(first).toMatch(/search the whole verify scope \(`git diff main\.\.\.HEAD`/)
     expect(first).toContain('- test-category (1): a.ts:1\n- comment-must-kill (1): a.ts:3')
     await gate()
     verdictLine = 'APPROVE'
@@ -902,8 +916,8 @@ test('sdd_verify records every round in the ledger and feeds the last blocking f
   expect(second.codeReviewer.prompt).toContain('- [critical] (test-category) a.ts:1 null deref')
   expect(second.codeReviewer.prompt, 'each agent sees only its own findings').not.toContain('a.ts:3')
   expect(second.commentAuditor.prompt).toContain('- [important] (comment-must-kill) a.ts:3 narration')
-  const rounds = readFindings(cwd, slug)
-  expect(rounds.map((r) => [r.round, r.verdict, r.findings.length])).toEqual([
+  const runs = readFindings(cwd, slug)
+  expect(runs.map((r) => [r.run, r.verdict, r.findings.length])).toEqual([
     [1, 'REQUEST CHANGES', 2],
     [2, 'REQUEST CHANGES', 2],
     [3, 'APPROVE', 0],
@@ -931,52 +945,129 @@ test('sdd_verify does not record a round when verification fails to finish', asy
   expect(readFindings(cwd, slug)).toEqual([])
 })
 
-test('sdd_complete asks for one memory lesson per recurring category, once', async () => {
+function ledgerFinding(category: string, line: number, severity: 'critical' | 'important' | 'nit' = 'important') {
+  return { severity, category, file: 'a.ts', line, issue: `${category} at ${line}`, fix: '', agents: ['test-engineer'] }
+}
+
+test('readFindings drops malformed runs and fixInstructions files a missing category as uncategorized', () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  const valid = {
+    run: 1,
+    at: 'x',
+    verdict: 'REQUEST CHANGES',
+    findings: [{ ...ledgerFinding('', 1), category: undefined }],
+  }
+  writeFileSync(
+    join(featureDir(cwd, slug), 'findings.json'),
+    JSON.stringify({ runs: [valid, { run: 2, verdict: 'APPROVE' }, null] }),
+  )
+  const runs = readFindings(cwd, slug)
+  expect(runs.map((r) => r.run)).toEqual([1])
+  expect(fixInstructions(must(runs[0], 'run').findings, ['git diff HEAD'])).toContain('- uncategorized (1): a.ts:1')
+})
+
+test('recurringSinceLessons counts a category seen in two runs or three times in one run, never nits', () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  appendFindings(cwd, slug, {
+    verdict: 'REQUEST CHANGES',
+    findings: [
+      ledgerFinding('twice', 1),
+      ledgerFinding('burst', 2),
+      ledgerFinding('burst', 3),
+      ledgerFinding('burst', 4, 'critical'),
+      ledgerFinding('pair', 5),
+      ledgerFinding('pair', 6),
+      ledgerFinding('naming', 7, 'nit'),
+      ledgerFinding('naming', 8, 'nit'),
+      ledgerFinding('naming', 9, 'nit'),
+    ],
+  })
+  appendFindings(cwd, slug, {
+    verdict: 'REQUEST CHANGES',
+    findings: [ledgerFinding('twice', 10), ledgerFinding('naming', 11, 'nit')],
+  })
+  const { recurring, through } = recurringSinceLessons(cwd, slug)
+  expect(through).toBe(2)
+  expect(recurring.map((r) => [r.category, r.findings, r.runs])).toEqual([
+    ['burst', 3, 1],
+    ['twice', 2, 2],
+  ])
+  expect(must(recurring[1], 'twice').example).toBe('twice at 1')
+})
+
+test('markLessons limits later lessons to runs appended after it', () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  appendFindings(cwd, slug, { verdict: 'REQUEST CHANGES', findings: [ledgerFinding('old', 1)] })
+  appendFindings(cwd, slug, { verdict: 'REQUEST CHANGES', findings: [ledgerFinding('old', 2)] })
+  markLessons(cwd, slug, 2)
+  expect(recurringSinceLessons(cwd, slug)).toEqual({ recurring: [], through: 2 })
+  appendFindings(cwd, slug, {
+    verdict: 'REQUEST CHANGES',
+    findings: [ledgerFinding('old', 3), ledgerFinding('new', 4)],
+  })
+  appendFindings(cwd, slug, { verdict: 'APPROVE', findings: [ledgerFinding('new', 5)] })
+  expect(recurringSinceLessons(cwd, slug).recurring.map((r) => [r.category, r.runs])).toEqual([['new', 2]])
+  expect(readFindings(cwd, slug).map((r) => r.run)).toEqual([1, 2, 3, 4])
+})
+
+test('priorFindings passes only blocking findings from the last run', () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  expect(priorFindings(cwd, slug)).toEqual([])
+  appendFindings(cwd, slug, { verdict: 'REQUEST CHANGES', findings: [ledgerFinding('old', 1)] })
+  appendFindings(cwd, slug, { verdict: 'APPROVE', findings: [ledgerFinding('naming', 2, 'nit')] })
+  expect(priorFindings(cwd, slug), 'an approve with only nits leaves nothing to re-check').toEqual([])
+  appendFindings(cwd, slug, {
+    verdict: 'REQUEST CHANGES',
+    findings: [ledgerFinding('naming', 3, 'nit'), ledgerFinding('bug', 4, 'critical')],
+  })
+  expect(priorFindings(cwd, slug).map((f) => f.category)).toEqual(['bug'])
+})
+
+function completeFeature(tools: Map<string, FakeTool>, cwd: string, slug: string) {
+  setVerification(cwd, slug, 'APPROVE')
+  return tool(tools, 'sdd_complete')
+    .execute(
+      'id',
+      { feature: slug, results: [{ criterion: 'saves phone', status: 'pass', evidence: 'tests pass' }] },
+      undefined,
+      undefined,
+      fakeCtx(cwd).ctx,
+    )
+    .then(toolText)
+}
+
+test('sdd_complete asks for one memory lesson per recurring category, and only once', async () => {
   const cwd = tmp()
   const { slug } = createFeature(cwd, 'phone', 'Phone')
   writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
-  const finding = (category: string, line: number, severity: 'important' | 'nit' = 'important') => ({
-    severity,
-    category,
-    file: 'a.ts',
-    line,
-    issue: `${category} at ${line}`,
-    fix: '',
-    agents: ['test-engineer'],
-  })
-  appendFindings(cwd, slug, {
-    verdict: 'REQUEST CHANGES',
-    findings: [finding('untested-error-path', 1), finding('one-off', 2), finding('naming', 3, 'nit')],
-  })
-  appendFindings(cwd, slug, {
-    verdict: 'REQUEST CHANGES',
-    findings: [finding('untested-error-path', 4), finding('naming', 5, 'nit')],
-  })
-  appendFindings(cwd, slug, { verdict: 'APPROVE', findings: [finding('naming', 6, 'nit')] })
-  setVerification(cwd, slug, 'APPROVE')
+  appendFindings(cwd, slug, { verdict: 'REQUEST CHANGES', findings: [ledgerFinding('untested-error-path', 1)] })
+  appendFindings(cwd, slug, { verdict: 'REQUEST CHANGES', findings: [ledgerFinding('untested-error-path', 4)] })
+  appendFindings(cwd, slug, { verdict: 'APPROVE', findings: [] })
   const { pi, tools } = fakePi()
   register(pi)
-  const complete = async () =>
-    toolText(
-      await tool(tools, 'sdd_complete').execute(
-        'id',
-        { feature: slug, results: [{ criterion: 'saves phone', status: 'pass', evidence: 'tests pass' }] },
-        undefined,
-        undefined,
-        fakeCtx(cwd).ctx,
-      ),
-    )
 
-  const text = await complete()
+  const text = await completeFeature(tools, cwd, slug)
   expect(text).toMatch(/the feature is done/)
   expect(text).toMatch(/memory_add with target "project" once per category/)
-  expect(text).toContain('- untested-error-path: 2 finding(s) over 2 round(s), e.g. "untested-error-path at 1"')
-  expect(text, 'a single finding in one round is not a pattern').not.toContain('one-off')
-  expect(text, 'nits never become lessons').not.toContain('naming')
-  expect(recurringSinceLessons(cwd, slug)).toEqual({ recurring: [], through: 3 })
+  expect(text).toContain('- untested-error-path: 2 finding(s) over 2 verify run(s), e.g. "untested-error-path at 1"')
+  expect(await completeFeature(tools, cwd, slug), 'lessons are asked for only once').not.toMatch(/memory_add/)
+})
 
-  setVerification(cwd, slug, 'APPROVE')
-  expect(await complete(), 'lessons are asked for only once').not.toMatch(/memory_add/)
+test('sdd_complete asks for no lessons when nothing recurred', async () => {
+  const cwd = tmp()
+  const { slug } = createFeature(cwd, 'phone', 'Phone')
+  writeDoc(cwd, slug, 'plan.md', VALID_PLAN)
+  appendFindings(cwd, slug, { verdict: 'REQUEST CHANGES', findings: [ledgerFinding('one-off', 1)] })
+  appendFindings(cwd, slug, { verdict: 'APPROVE', findings: [] })
+  const { pi, tools } = fakePi()
+  register(pi)
+  expect(await completeFeature(tools, cwd, slug)).toBe(
+    'All criteria pass and verification approved; the feature is done.',
+  )
 })
 
 test('sdd_verify approves without an agent pass when the scope has no changes', async () => {

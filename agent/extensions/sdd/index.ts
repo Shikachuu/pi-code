@@ -507,7 +507,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
           )
       }
       return text(
-        `Verification: REQUEST CHANGES (round ${rounds}). Fix every critical issue and every must-kill item in the report below.\n\n${fixInstructions(result.findings)}Then re-run the validation pipeline and call sdd_verify again.\n\n${result.markdown}`,
+        `Verification: REQUEST CHANGES (round ${rounds}). Fix every critical issue and every must-kill item in the report below.\n\n${fixInstructions(result.findings, result.scope.commands)}Then re-run the validation pipeline and call sdd_verify again.\n\n${result.markdown}`,
       )
     },
   })
