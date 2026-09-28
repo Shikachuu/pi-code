@@ -68,6 +68,10 @@ const VERIFY_ROUND_CAP = 3
 const HANDOFF = Symbol.for('ultimate-harness/sdd-handoff')
 const handoffSlot = globalThis as { [HANDOFF]?: Handoff }
 
+function markStaleApproval(cwd: string, slug: string): void {
+  setVerification(cwd, slug, 'REQUEST CHANGES')
+}
+
 interface Draft {
   slug: string
   title: string
@@ -411,8 +415,7 @@ export default function (pi: ExtensionAPI, options: SddOptions = {}) {
       const failed = params.results.filter((r) => r.status === 'fail').length
       if (failed) {
         setPhase(ctx.cwd, state.slug, 'implementing')
-        // An earlier APPROVE covered the code as it was, so the fix must be re-verified.
-        setVerification(ctx.cwd, state.slug, 'REQUEST CHANGES')
+        markStaleApproval(ctx.cwd, state.slug)
         return text(
           `${failed} criteria failed; the feature stays in implementing. Fix them, re-run the validation pipeline, then call sdd_verify again.`,
         )

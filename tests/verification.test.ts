@@ -284,6 +284,38 @@ test('mergeFindings dedupes at file:line, keeps the higher severity, and attribu
   expect(first.file).toBe('a.ts')
   expect(first.line).toBe(10)
   expect(first.agents.sort()).toEqual(['code-reviewer', 'comment-auditor', 'test-engineer'])
+  expect(first.issue.split('; ').sort()).toEqual(['dead comment', 'naming', 'no test'])
+  expect(first.fix).toBe('add a test')
+})
+
+test('mergeFindings appends distinct issue text once and skips duplicates', () => {
+  const r = reports({
+    codeReviewer: {
+      ...must(reports().codeReviewer, 'code reviewer'),
+      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'same', fix: '' }],
+    },
+    testEngineer: {
+      ...must(reports().testEngineer, 'test engineer'),
+      findings: [{ severity: 'nit', file: 'a.ts', line: 1, issue: 'same', fix: '' }],
+    },
+  })
+  expect(must(mergeFindings(r)[0], 'merged finding').issue).toBe('same')
+})
+
+test('renderSummary labels a finding flagged by all three agents as [all]', () => {
+  const finding = (issue: string) => ({ severity: 'nit' as const, file: 'a.ts', line: 5, issue, fix: '' })
+  const md = renderSummary(
+    baseScope(),
+    reports({
+      codeReviewer: { ...must(reports().codeReviewer, 'code reviewer'), findings: [finding('x')] },
+      testEngineer: { ...must(reports().testEngineer, 'test engineer'), findings: [finding('y')] },
+      commentAuditor: {
+        ...must(reports().commentAuditor, 'comment auditor'),
+        nits: [{ file: 'a.ts', line: 5, issue: 'z' }],
+      },
+    }),
+  )
+  expect(md).toMatch(/### Nits\n- \[all\] a\.ts:5 x; y; z/)
 })
 
 test('comment-auditor categories map to severities', () => {

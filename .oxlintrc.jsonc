@@ -7,6 +7,7 @@
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest", "node"],
   "rules": {
     "vitest/no-import-node-test": "error",
+    "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "assert", "expectGolden"] }],
     "import/no-duplicates": "error",
     "import/no-unassigned-import": "error",
     "typescript/no-explicit-any": "error",

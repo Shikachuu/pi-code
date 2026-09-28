@@ -47,6 +47,8 @@ Log in once per machine with `/login`, or export the provider env var (for examp
 
 The tests point `HOME` and `cwd` at empty temp dirs, so `~/.agents/skills` and ancestor `AGENTS.md` files do not leak in. After an intended change, run `mise run snapshot` and commit the diff.
 
+The SDD prompt and markdown renderers have byte-exact goldens under `tests/fixtures/sdd-golden/`. `tests/jinja-golden.test.ts` renders each `.jinja` template with fixed inputs and compares the output. After an intended prompt change, run `mise run golden` and commit the diff.
+
 ## Runtime drift
 
 Pi writes to `agent/settings.json` when you save a model with Ctrl+S in `/model`, change `/settings`, or upgrade. `mise run drift` fails when that happens. Commit the change if you want it, or run `mise run reset` to discard it.

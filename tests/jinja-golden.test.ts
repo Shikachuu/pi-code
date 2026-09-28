@@ -13,7 +13,7 @@ import {
 import { MAX_PROBES, draftArgs, discoveryArgs, enrichArgs, researchArgs } from '../agent/extensions/sdd/workflows.ts'
 import { type Reports, renderSummary } from '../agent/extensions/verification/report.ts'
 import type { Scope } from '../agent/extensions/verification/scope.ts'
-import { golden } from './golden.ts'
+import { expectGolden } from './golden.ts'
 
 const SPEC = '# Phone\n\n## Goal\nAdd a phone field.\n'
 const DISCOVERY = '# Discovery\n\n## Summary\nFound things.\n'
@@ -32,6 +32,12 @@ const SCOPE: Scope = {
   commands: ['git diff main...HEAD'],
   stats: { files: 2, insertions: 10, deletions: 2 },
   notes: [],
+}
+
+const ENRICHMENT = {
+  scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
+  repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
+  questions: { questions: [] },
 }
 
 function reports(overrides: Partial<Reports> = {}): Reports {
@@ -63,12 +69,13 @@ function reports(overrides: Partial<Reports> = {}): Reports {
 }
 
 test('rendered sdd templates match the pre-port goldens byte for byte', () => {
-  expect(SPEC_TEMPLATE).toBe(golden('spec-template'))
-  expect(PLAN_TEMPLATE).toBe(golden('plan-template'))
+  expectGolden('spec-template', SPEC_TEMPLATE)
+  expectGolden('plan-template', PLAN_TEMPLATE)
 })
 
 test('planPrompt matches the pre-port goldens for every branch', () => {
-  expect(
+  expectGolden(
+    'plan-prompt-full',
     planPrompt({
       slug: 'phone',
       dir: '.pi/sdd/phone',
@@ -77,11 +84,13 @@ test('planPrompt matches the pre-port goldens for every branch', () => {
       research: RESEARCH,
       memory: MEMORY,
     }),
-  ).toBe(golden('plan-prompt-full'))
-  expect(
+  )
+  expectGolden(
+    'plan-prompt-minimal',
     planPrompt({ slug: 'phone', dir: '.pi/sdd/phone', spec: SPEC, discovery: undefined, research: [], memory: '' }),
-  ).toBe(golden('plan-prompt-minimal'))
-  expect(
+  )
+  expectGolden(
+    'plan-prompt-research',
     planPrompt({
       slug: 'phone',
       dir: '.pi/sdd/phone',
@@ -90,25 +99,28 @@ test('planPrompt matches the pre-port goldens for every branch', () => {
       research: RESEARCH,
       memory: '',
     }),
-  ).toBe(golden('plan-prompt-research'))
-  expect(
+  )
+  expectGolden(
+    'plan-prompt-memory',
     planPrompt({ slug: 'phone', dir: '.pi/sdd/phone', spec: SPEC, discovery: undefined, research: [], memory: MEMORY }),
-  ).toBe(golden('plan-prompt-memory'))
+  )
 })
 
 test('implementPrompt matches the pre-port golden', () => {
-  expect(
+  expectGolden(
+    'implement-prompt',
     implementPrompt({
       slug: 'phone',
       plan: PLAN_TEMPLATE,
       planPath: '.pi/sdd/phone/plan.md',
       docs: ['.pi/sdd/phone/spec.md', '.pi/sdd/phone/research-1.md'],
     }),
-  ).toBe(golden('implement-prompt'))
+  )
 })
 
 test('renderResearch matches the pre-port golden', () => {
-  expect(
+  expectGolden(
+    'research-report',
     renderResearch({
       question: 'Phone validation',
       summary: 'Use libphonenumber',
@@ -120,78 +132,72 @@ test('renderResearch matches the pre-port golden', () => {
       recommendation: 'Normalize on write',
       openQuestions: [],
     }),
-  ).toBe(golden('research-report'))
+  )
 })
 
-test('enrich, draft and discovery prompts match the pre-port goldens', () => {
+test('enrich prompts match the pre-port goldens', () => {
   const enrich = enrichArgs('add a phone field', MEMORY)
-  expect(enrich.scope.prompt).toBe(golden('enrich-scope'))
-  expect(enrich.repo.prompt).toBe(golden('enrich-repo'))
-  expect(enrich.questions.prompt).toBe(golden('enrich-questions'))
+  expectGolden('enrich-scope', enrich.scope.prompt)
+  expectGolden('enrich-repo', enrich.repo.prompt)
+  expectGolden('enrich-questions', enrich.questions.prompt)
+})
 
-  const enrichment = {
-    scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
-    repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
-    questions: { questions: [] },
-  }
-  expect(draftArgs({ request: 'add phone', enrichment, answers: '', memory: MEMORY }).prompt).toBe(
-    golden('draft-prompt'),
+test('draft prompts match the pre-port goldens for the compose and revise branches', () => {
+  expectGolden(
+    'draft-prompt',
+    draftArgs({ request: 'add phone', enrichment: ENRICHMENT, answers: '', memory: MEMORY }).prompt,
   )
-  expect(
+  expectGolden(
+    'draft-revise',
     draftArgs({
       request: 'add phone',
-      enrichment,
+      enrichment: ENRICHMENT,
       answers: 'E.164',
       memory: '',
       draft: '# Phone',
       feedback: 'mention limits',
     }).prompt,
-  ).toBe(golden('draft-revise'))
+  )
+})
 
+test('discovery prompts match the pre-port goldens', () => {
   const discovery = discoveryArgs(SPEC, undefined, MEMORY)
-  expect(discovery.plan.prompt).toBe(golden('discovery-plan'))
-  expect(discovery.probe.prompt).toBe(golden('discovery-probe'))
-  expect(discovery.synth.prompt).toBe(golden('discovery-synth'))
-  expect(discoveryArgs(SPEC, DISCOVERY, '').synth.prompt).toBe(golden('discovery-synth-existing'))
+  expectGolden('discovery-plan', discovery.plan.prompt)
+  expectGolden('discovery-probe', discovery.probe.prompt)
+  expectGolden('discovery-synth', discovery.synth.prompt)
+  expectGolden('discovery-synth-existing', discoveryArgs(SPEC, DISCOVERY, '').synth.prompt)
 })
 
 test('prompt builders with empty optional inputs match the pre-port goldens', () => {
-  expect(enrichArgs('add a phone field', '').scope.prompt).toBe(golden('enrich-scope-empty'))
-  expect(enrichArgs('add a phone field', '').questions.prompt).toBe(golden('enrich-questions-empty'))
-  expect(discoveryArgs(SPEC, undefined, '').plan.prompt).toBe(golden('discovery-plan-empty'))
-  expect(researchArgs('phone validation', SPEC, undefined).report.prompt).toBe(
-    golden('research-report-prompt-no-discovery'),
-  )
+  expectGolden('enrich-scope-empty', enrichArgs('add a phone field', '').scope.prompt)
+  expectGolden('enrich-questions-empty', enrichArgs('add a phone field', '').questions.prompt)
+  expectGolden('discovery-plan-empty', discoveryArgs(SPEC, undefined, '').plan.prompt)
+  expectGolden('research-report-prompt-no-discovery', researchArgs('phone validation', SPEC, undefined).report.prompt)
 })
 
 test('research prompts match the pre-port goldens', () => {
   const research = researchArgs('phone validation', SPEC, DISCOVERY)
-  expect(research.queries.prompt).toBe(golden('research-queries'))
-  expect(research.gather.prompt).toBe(golden('research-gather'))
-  expect(research.verify.prompt).toBe(golden('research-verify'))
-  expect(research.report.prompt).toBe(golden('research-report-prompt'))
+  expectGolden('research-queries', research.queries.prompt)
+  expectGolden('research-gather', research.gather.prompt)
+  expectGolden('research-verify', research.verify.prompt)
+  expectGolden('research-report-prompt', research.report.prompt)
 })
 
 test('renderSummary matches the pre-port goldens with and without a missing agent', () => {
-  expect(renderSummary(SCOPE, reports())).toBe(golden('verification-summary'))
-  expect(renderSummary(SCOPE, reports({ commentAuditor: null }))).toBe(golden('verification-summary-missing'))
+  expectGolden('verification-summary', renderSummary(SCOPE, reports()))
+  expectGolden('verification-summary-missing', renderSummary(SCOPE, reports({ commentAuditor: null })))
 })
 
 test('sdd prompt builders carry their inputs independently of the goldens', () => {
-  const enrichment = {
-    scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
-    repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
-    questions: { questions: [] },
-  }
   const enrich = enrichArgs('add a phone field', MEMORY)
   expect(enrich.scope.prompt).toContain('add a phone field')
   expect(enrich.scope.prompt).toContain(MEMORY)
   expect(enrich.repo.prompt).not.toContain(MEMORY)
 
-  expect(draftArgs({ request: 'add phone', enrichment, answers: '', memory: '' }).prompt).not.toContain(
+  expect(draftArgs({ request: 'add phone', enrichment: ENRICHMENT, answers: '', memory: '' }).prompt).not.toContain(
     '<user-answers>',
   )
-  expect(draftArgs({ request: 'add phone', enrichment, answers: 'E.164', memory: '' }).prompt).toContain(
+  expect(draftArgs({ request: 'add phone', enrichment: ENRICHMENT, answers: 'E.164', memory: '' }).prompt).toContain(
     '<user-answers>\nE.164\n</user-answers>',
   )
 
@@ -228,7 +234,7 @@ test('renderResearch renders a finding with no sources as claim ()', () => {
   expect(md).toContain('- No sources ()')
 })
 
-test('every tracked template has at least one golden fixture', () => {
+test('every tracked template has a golden fixture and every fixture has a template', () => {
   const templates = ['sdd', 'verification'].flatMap((dir) =>
     readdirSync(join(import.meta.dirname, '..', 'agent', 'extensions', dir, 'templates'))
       .filter((file) => file.endsWith('.jinja'))
@@ -257,17 +263,14 @@ test('every tracked template has at least one golden fixture', () => {
     'verification-summary': ['verification-summary', 'verification-summary-missing'],
   }
   expect(Object.keys(covered).sort()).toEqual([...templates].sort())
+  const referenced = new Set(Object.values(covered).flat())
   for (const [name, goldens] of Object.entries(covered)) {
-    for (const fixture of goldens) expect(fixtures.has(fixture), `${name} -> ${fixture}`).toBe(true)
+    for (const fixture of goldens) assert.isTrue(fixtures.has(fixture), `${name} -> ${fixture}`)
   }
+  for (const fixture of fixtures) assert.isTrue(referenced.has(fixture), `orphan fixture ${fixture}`)
 })
 
 test('rendered prompts contain no unrendered template syntax', () => {
-  const enrichment = {
-    scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
-    repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
-    questions: { questions: [] },
-  }
   const enrich = enrichArgs('add a phone field', MEMORY)
   const discovery = discoveryArgs(SPEC, undefined, MEMORY)
   const research = researchArgs('phone validation', SPEC, DISCOVERY)
@@ -303,7 +306,7 @@ test('rendered prompts contain no unrendered template syntax', () => {
     ['enrich-scope', enrich.scope.prompt],
     ['enrich-repo', enrich.repo.prompt],
     ['enrich-questions', enrich.questions.prompt],
-    ['draft-prompt', draftArgs({ request: 'add phone', enrichment, answers: '', memory: MEMORY }).prompt],
+    ['draft-prompt', draftArgs({ request: 'add phone', enrichment: ENRICHMENT, answers: '', memory: MEMORY }).prompt],
     ['discovery-plan', discovery.plan.prompt],
     ['discovery-probe', discovery.probe.prompt],
     ['discovery-synth', discovery.synth.prompt],

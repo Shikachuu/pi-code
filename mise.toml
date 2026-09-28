@@ -45,6 +45,12 @@ dir = "{{config_root}}"
 env = { UPDATE_SNAPSHOTS = "1" }
 run = "npx vitest run"
 
+[tasks.golden]
+description = "Regenerate sdd golden fixtures"
+dir = "{{config_root}}"
+env = { UPDATE_GOLDENS = "1" }
+run = "npx vitest run tests/jinja-golden.test.ts"
+
 [tasks.drift]
 description = "Fail if pi changed tracked config at runtime"
 dir = "{{config_root}}"
