@@ -219,8 +219,10 @@ export function summarizeChecks(checks: Check[]): string {
   if (checks.length === 0) return 'No checks reported for this pull request.'
   const failing = checks.filter(isFailing).length
   const pending = checks.filter(isPending).length
-  const passing = checks.length - failing - pending
-  const header = `${checks.length} checks: ${passing} passing, ${pending} pending, ${failing} failing`
+  const passing = checks.filter((check) => check.bucket === 'pass').length
+  const other = checks.length - passing - pending - failing
+  const otherText = other > 0 ? `, ${other} other` : ''
+  const header = `${checks.length} checks: ${passing} passing, ${pending} pending, ${failing} failing${otherText}`
   const lines = checks.map((check) => {
     const status = check.bucket ?? check.state ?? 'unknown'
     const detail = check.description ? ` - ${check.description}` : ''

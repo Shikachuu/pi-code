@@ -107,9 +107,6 @@ export interface StubOnPath extends Stub {
   logPath: string
 }
 
-// Each test file runs in its own vitest worker, so mutating the process-global
-// PATH here does not leak into other files. Keep PATH mutation inside this
-// module's tracker and restore it in a per-file afterEach.
 const pathStubs: Stub[] = []
 
 export function stubOnPath(name: string, script: string): StubOnPath {

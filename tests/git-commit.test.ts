@@ -179,7 +179,8 @@ test('a confirmed push sends the commit to the remote', async () => {
     ctx(cwd, true),
   )
   expect(resultText(result)).toMatch(/Committed and pushed/)
-  expect(stub.pushes().length).toBe(1)
+  expect(stub.pushes()).toEqual(['push --set-upstream origin feature'])
+  expect(git(cwd, ['config', 'branch.feature.remote'])).toBe('origin')
   expect(git(cwd, ['rev-list', '--count', 'origin/feature..HEAD'])).toBe('0')
 })
 
@@ -192,9 +193,9 @@ test('push targets the branch upstream remote rather than the first remote', asy
   stage(cwd, 'b.txt', 'b\n')
   const stub = stubGit()
   await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, ctx(cwd, true))
-  const pushes = stub.pushes()
-  expect(pushes.some((call) => call.includes('upstream feature'))).toBe(true)
-  expect(pushes.some((call) => call.includes('origin feature'))).toBe(false)
+  expect(stub.pushes()).toEqual(['push'])
+  expect(git(cwd, ['rev-list', '--count', 'upstream/feature..HEAD'])).toBe('0')
+  expect(() => git(cwd, ['rev-parse', '--verify', 'origin/feature'])).toThrow(/revision/i)
 })
 
 test('a headless push confirmation returns guidance and does not push', async () => {
@@ -295,11 +296,18 @@ test('a message with shell metacharacters is committed verbatim', async () => {
   expect(git(cwd, ['log', '-1', '--format=%s'])).toBe(message.split('\n')[0])
 })
 
-test('the past-tense heuristic and its named-pipe false positive are explicit', () => {
+test('the past-tense heuristic only flags known past-tense openers', () => {
   expect(isPastTense('moved the parser')).toBe(true)
-  expect(isPastTense('named pipe support')).toBe(true)
+  expect(isPastTense('named pipe support')).toBe(false)
   expect(isPastTense('move the parser')).toBe(false)
   expect(validateSubject('feat: moved the parser').join('\n')).toMatch(/present tense/)
+})
+
+test('a prefixless long uppercase subject returns format, lowercase and length hints', () => {
+  const hints = validateSubject(`Add a thing ${'x'.repeat(70)}`).join('\n')
+  expect(hints).toMatch(/must match/)
+  expect(hints).toMatch(/lowercase/)
+  expect(hints).toMatch(/72 characters/)
 })
 
 test('subjects without a usable type return the format hint', () => {
@@ -331,7 +339,7 @@ test('commit resolves with error text when the signal is already aborted', async
   const controller = new AbortController()
   controller.abort()
   const result = await loadTool().execute('id', {}, controller.signal, undefined, ctx(cwd))
-  expect(resultText(result)).toMatch(/abort|failed with exit code/)
+  expect(resultText(result)).toMatch(/aborted/i)
 })
 
 test('commit falls back to the message subject when git log fails', async () => {

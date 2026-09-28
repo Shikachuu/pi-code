@@ -40,12 +40,16 @@ const Params = Type.Object({
 const NO_UI =
   'Error: no interactive UI; this operation writes to GitHub. Ask the user to run `gh` themselves, or retry when a UI is available.'
 
-async function resolveBase(cwd: string, requested: string | undefined, signal: AbortSignal | undefined) {
+async function resolveBase(
+  cwd: string,
+  requested: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<{ base: string; gitRef: string } | undefined> {
   for (const candidate of requested ? [requested] : ['main', 'master']) {
     const local = await run('git', ['rev-parse', '--verify', candidate], { cwd, signal })
-    if (local.ok) return candidate
+    if (local.ok) return { base: candidate, gitRef: candidate }
     const remote = await run('git', ['rev-parse', '--verify', `refs/remotes/origin/${candidate}`], { cwd, signal })
-    if (remote.ok) return candidate
+    if (remote.ok) return { base: candidate, gitRef: `origin/${candidate}` }
   }
   return undefined
 }
@@ -123,14 +127,15 @@ export default function (pi: ExtensionAPI) {
 
         case 'pr create': {
           if (!ctx.hasUI) return text(NO_UI)
-          const base = await resolveBase(cwd, params.base, signal)
-          if (!base) {
+          const resolved = await resolveBase(cwd, params.base, signal)
+          if (!resolved) {
             const looked = params.base ? `"${params.base}"` : '(main or master)'
             return text(
               `Could not find base branch ${looked} as a local or origin ref. Create it or pass a valid base.`,
             )
           }
-          const log = await run('git', gitLogArgs(base), { cwd, signal })
+          const base = resolved.base
+          const log = await run('git', gitLogArgs(resolved.gitRef), { cwd, signal })
           if (log.missing) return text(`git (not found on PATH): ${log.stderr.trim()}`)
           if (!log.ok)
             return text(`git log failed with exit code ${log.code}: ${log.stderr.trim() || log.stdout.trim()}`)

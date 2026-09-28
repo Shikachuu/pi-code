@@ -19,6 +19,8 @@ export interface RunResult {
 
 const MAX_BUFFER = 10 * 1024 * 1024
 
+const NON_INTERACTIVE_ENV = { GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1' }
+
 export function truncateOutput(text: string, maxLines?: number): string {
   const result = truncateTail(text, maxLines === undefined ? undefined : { maxLines })
   if (!result.truncated) return text
@@ -34,8 +36,7 @@ export function run(command: string, args: string[], options: RunOptions = {}): 
   return new Promise((resolve) => {
     const execOptions: ExecFileOptions = {
       maxBuffer: MAX_BUFFER,
-      // git and gh must never block on a terminal prompt from inside a tool call.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1' },
+      env: { ...process.env, ...NON_INTERACTIVE_ENV },
     }
     if (options.cwd !== undefined) execOptions.cwd = options.cwd
     if (options.signal !== undefined) execOptions.signal = options.signal
@@ -58,13 +59,17 @@ export function run(command: string, args: string[], options: RunOptions = {}): 
           return
         }
         const missing = (error as NodeJS.ErrnoException).code === 'ENOENT'
-        const stderrText = err || (missing ? `spawn ${command} ENOENT` : error.message)
+        const overBuffer = (error as NodeJS.ErrnoException).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+        const aborted = error.name === 'AbortError' || (error as NodeJS.ErrnoException).code === 'ABORT_ERR'
+        const stderrText = overBuffer
+          ? `command output exceeded the ${MAX_BUFFER} byte limit`
+          : missing
+            ? `spawn ${command} ENOENT`
+            : err || (aborted ? error.message : '')
         resolve({
           ok: false,
           stdout: out,
-          stderr: stderrText.includes('maxBuffer')
-            ? `command output exceeded the ${MAX_BUFFER} byte limit`
-            : stderrText,
+          stderr: stderrText,
           code: typeof error.code === 'number' ? error.code : 1,
           missing,
         })

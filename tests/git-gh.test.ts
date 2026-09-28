@@ -296,6 +296,27 @@ test('pr create honours an explicit base', async () => {
   expect(gh.calls().join('\n')).toContain('--base trunk')
 })
 
+test('pr create falls back to origin/main when the local main ref is gone', async () => {
+  const remote = mkdtempSync(join(tmpdir(), 'gh-remote-'))
+  git(remote, ['init', '--bare'])
+  const cwd = initRepo()
+  git(cwd, ['remote', 'add', 'origin', remote])
+  git(cwd, ['push', '-u', 'origin', 'main'])
+  git(cwd, ['checkout', 'feature'])
+  git(cwd, ['branch', '-D', 'main'])
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'https://github.com/o/r/pull/1'; exit 0; fi\nexit 1`,
+  )
+  await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(gh.calls().join('\n')).toContain('--base main')
+})
+
 test('pr create needs a title when there are no commits ahead of the base', async () => {
   const cwd = initRepo()
   git(cwd, ['checkout', 'main'])
@@ -483,7 +504,7 @@ test('gh resolves with error text when the signal is already aborted', async () 
     undefined,
     readOnlyCtx(process.cwd()),
   )
-  expect(resultText(result)).toMatch(/abort|failed with exit code/)
+  expect(resultText(result)).toMatch(/aborted/i)
 })
 
 test('parseCommits and buildPrBody keep subjects, bodies and a commit list', () => {
@@ -493,9 +514,34 @@ test('parseCommits and buildPrBody keep subjects, bodies and a commit list', () 
   const body = buildPrBody(commits)
   expect(body).toContain('## Summary')
   expect(body).toContain('- add b')
-  expect(body).toContain('why b')
+  expect(body).toContain('\n  why b')
   expect(body).toContain('## Commits')
   expect(buildPrBody([])).toBe('No local commits ahead of the base branch.')
+})
+
+test('buildPrBody notes the 50-commit cap only when it is hit', () => {
+  const many = (count: number) => Array.from({ length: count }, (_, i) => ({ subject: `s${i}` }))
+  expect(buildPrBody(many(49))).not.toContain('Showing the latest 50 commits')
+  expect(buildPrBody(many(50))).toContain('Showing the latest 50 commits')
+})
+
+test('parseChecks rejects non-array payloads and summarizeChecks counts other buckets', () => {
+  expect(parseChecks('{}')).toBeUndefined()
+  expect(parseChecks('"x"')).toBeUndefined()
+  const checks = must(parseChecks(JSON.stringify([{ name: 'a', bucket: 'skipping' }])), 'checks')
+  expect(summarizeChecks(checks)).toContain('0 passing, 0 pending, 0 failing, 1 other')
+})
+
+test('a silent gh failure reports the no-output placeholder', async () => {
+  stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr view' },
+    undefined,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(result)).toMatch(/\(no output from gh\)/)
 })
 
 test('summarizeChecks keys off bucket and state, not the exit code', () => {

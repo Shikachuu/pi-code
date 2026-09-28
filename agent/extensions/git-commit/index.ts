@@ -22,7 +22,7 @@ async function stagedDiff(cwd: string, signal: AbortSignal | undefined, extra: s
   if (!result.ok) {
     return {
       ok: false,
-      error: `git ${args.join(' ')} failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
+      error: `git ${args.join(' ')} failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim() || '(no output)', 20)}`,
     }
   }
   return { ok: true, hasChanges: result.stdout.trim().length > 0, text: result.stdout }
@@ -60,7 +60,7 @@ export default function (pi: ExtensionAPI) {
       if (result.missing) return text(`git (not found on PATH): ${result.stderr.trim()}`)
       if (!result.ok) {
         return text(
-          `git commit failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
+          `git commit failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim() || '(no output)', 20)}`,
         )
       }
 
@@ -96,12 +96,12 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) {
         return text(`Committed:\n${summary}${hintText}\n\nPush declined; the commit stays local.`)
       }
-      const pushArgs = hasUpstream ? ['push', remote, branch] : ['push', '--set-upstream', remote, branch]
+      const pushArgs = hasUpstream ? ['push'] : ['push', '--set-upstream', remote, branch]
       const push = await run('git', pushArgs, { cwd, signal })
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {
         return text(
-          `git push failed with exit code ${push.code}: ${truncateOutput(push.stderr.trim() || push.stdout.trim(), 20)}\n\nThe commit stays local.`,
+          `git push failed with exit code ${push.code}: ${truncateOutput(push.stderr.trim() || push.stdout.trim() || '(no output)', 20)}\n\nThe commit stays local.`,
         )
       }
       return text(`Committed and pushed ${branch} to ${remote}:\n${summary}${hintText}`)

@@ -53,6 +53,21 @@ test('run resolves when cwd is a file instead of a directory', async () => {
   expect(result.missing).toBe(false)
 })
 
+test('run passes the non-interactive env to the child', async () => {
+  const result = await run(node, [
+    '-e',
+    'process.stdout.write(`${process.env.GIT_TERMINAL_PROMPT}/${process.env.GH_PROMPT_DISABLED}`)',
+  ])
+  expect(result.stdout).toBe('0/1')
+})
+
+test('run names the byte limit when a command exceeds maxBuffer', async () => {
+  const result = await run(node, ['-e', "process.stdout.write('x'.repeat(11 * 1024 * 1024))"])
+  expect(result.ok).toBe(false)
+  expect(result.missing).toBe(false)
+  expect(result.stderr).toContain('command output exceeded the')
+})
+
 test('truncateOutput returns short input unchanged', () => {
   expect(truncateOutput('one\ntwo')).toBe('one\ntwo')
 })

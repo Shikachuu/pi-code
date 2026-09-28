@@ -23,8 +23,7 @@ const PAST_TENSE_WORDS =
 
 export function isPastTense(summary: string): boolean {
   const first = summary.trim().split(/\s+/)[0] ?? ''
-  if (PAST_TENSE_WORDS.test(first)) return true
-  return /ed$/i.test(first) && first.length > 3
+  return PAST_TENSE_WORDS.test(first)
 }
 
 export function validateSubject(subject: string): string[] {

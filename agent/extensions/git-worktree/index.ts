@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs'
+
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
@@ -33,6 +35,14 @@ const Params = Type.Object({
 })
 
 type Loaded = { ok: true; envelope: WtEnvelope } | { ok: false; error: string }
+
+function realPath(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
 
 async function loadWorktrees(cwd: string, signal: AbortSignal | undefined): Promise<Loaded> {
   const result = await run('wt', ['list', '--format=json'], { cwd, signal })
@@ -131,7 +141,10 @@ export default function (pi: ExtensionAPI) {
           const branch = params.branch?.trim() || findCurrent(loaded.envelope)?.branch
           if (!branch) return text('worktree remove needs a branch when there is no current worktree.')
           const target = findByBranch(loaded.envelope, branch)
-          const ownsCwd = target !== undefined && (target.path === cwd || cwd.startsWith(`${target.path}/`))
+          const resolvedTarget = target ? realPath(target.path) : ''
+          const resolvedCwd = realPath(cwd)
+          const ownsCwd =
+            target !== undefined && (resolvedTarget === resolvedCwd || resolvedCwd.startsWith(`${resolvedTarget}/`))
           if (ownsCwd && !params.force) {
             return text(
               `Refusing to remove ${target.path}: it is the worktree this session is running in. Pass force true to override.`,

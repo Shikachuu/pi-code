@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -284,6 +284,21 @@ test('worktree refuses to remove the worktree it is running in unless forced', a
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
 
+test('worktree refuses to remove the worktree when cwd is a subdirectory of it', async () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'wt-cwd-'))
+  const nested = join(worktree, 'nested', 'deeper')
+  mkdirSync(nested, { recursive: true })
+  const wt = stubList({ schema: 2, items: [{ branch: 'feature', worktree: { path: worktree, current: true } }] })
+  const nestedCtx = asMock<ExtensionContext>({
+    cwd: nested,
+    hasUI: true,
+    ui: { confirm: async () => true, notify: () => {} },
+  })
+  const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, nestedCtx)
+  expect(resultText(result)).toMatch(/Refusing to remove/)
+  expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
+})
+
 test('worktree remove refuses without a UI and never runs wt remove', async () => {
   const wt = stubList({
     schema: 2,
@@ -373,6 +388,52 @@ test('summarize falls back to placeholders for a detached worktree', () => {
   expect(summary.branch).toBe('(detached)')
   expect(summary.path).toBe('(unknown)')
   expect(summary.dirty).toBe(false)
+})
+
+test('parseEnvelope drops wrong-typed change values and non-array items', () => {
+  const envelope = must(
+    parseEnvelope(
+      JSON.stringify({ items: [{ branch: 'x', worktree: { changes: { staged: 'yes', diff: { added: '3' } } } }] }),
+    ),
+    'envelope',
+  )
+  expect(summarize(must(envelope.items[0], 'item')).changes).toEqual({ diff: {} })
+  expect(formatList(must(parseEnvelope('{"items":"x"}'), 'non-array'))).toBe('No worktrees found.')
+})
+
+test('isDirty and describeChanges handle zero and diff-only changes', () => {
+  expect(isDirty({ modified: 0 })).toBe(false)
+  expect(describeChanges({ modified: 0 })).toBe('clean')
+  const flagsOff = {
+    staged: false,
+    modified: false,
+    untracked: false,
+    renamed: false,
+    deleted: false,
+    conflicted: false,
+  }
+  expect(isDirty({ ...flagsOff, diff: { added: 12, deleted: 0 } })).toBe(true)
+  expect(describeChanges({ ...flagsOff, diff: { added: 12, deleted: 0 } })).toBe('dirty (+12/-0)')
+})
+
+test('worktree create reports partial success when the follow-up list fails', async () => {
+  const marker = join(mkdtempSync(join(tmpdir(), 'wt-partial-')), 'switched')
+  const base = { schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] }
+  stubOnPath(
+    'wt',
+    [
+      `if [ "$1" = "switch" ]; then touch ${shellQuote(marker)}; exit 0; fi`,
+      `if [ "$1" = "list" ]; then`,
+      `  if [ -f ${shellQuote(marker)} ]; then printf '%s\\n' "list is down" >&2; exit 3; fi`,
+      `  printf '%s' ${shellQuote(JSON.stringify(base))}`,
+      `  exit 0`,
+      'fi',
+      'exit 0',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute('id', { operation: 'switch', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/Switched to feature\. wt list failed with exit code 3/)
+  expect(resultText(result)).toContain('list is down')
 })
 
 test('existingWorktreeError reports the existing path', () => {
