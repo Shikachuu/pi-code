@@ -28,6 +28,8 @@ Log in once per machine with `/login`, or export the provider env var (for examp
 | `agent/extensions/<name>/index.ts` | extensions, loaded with jiti (no build step)                       |
 | `agent/themes/<name>.json`         | themes                                                             |
 
+The `commit` tool in `agent/extensions/git-commit/` replaced the former `commit-message` skill. `/skill:commit-message` no longer exists; the commit message rules live in the tool's prompt guidelines.
+
 `agent/.gitignore` is an allowlist. Pi writes `auth.json`, `trust.json`, `sessions/`, `models-store.json`, `bin/` and other state into `agent/`, and git ignores all of them by default, including any new state files future pi versions add.
 
 ## Determinism rules

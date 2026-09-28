@@ -168,12 +168,6 @@
     "path": "<REPO>/agent/skills/actions/SKILL.md"
   },
   {
-    "name": "skill:commit-message",
-    "source": "skill",
-    "scope": "user",
-    "path": "<REPO>/agent/skills/commit-message/SKILL.md"
-  },
-  {
     "name": "skill:mise",
     "source": "skill",
     "scope": "user",

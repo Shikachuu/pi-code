@@ -6,11 +6,6 @@
       "modelInvocable": true
     },
     {
-      "name": "commit-message",
-      "path": "<REPO>/agent/skills/commit-message/SKILL.md",
-      "modelInvocable": true
-    },
-    {
       "name": "mise",
       "path": "<REPO>/agent/skills/mise/SKILL.md",
       "modelInvocable": true
@@ -46,6 +41,18 @@
   "extensions": [
     {
       "path": "<REPO>/agent/extensions/ask-user/index.ts",
+      "commands": []
+    },
+    {
+      "path": "<REPO>/agent/extensions/git-commit/index.ts",
+      "commands": []
+    },
+    {
+      "path": "<REPO>/agent/extensions/git-gh/index.ts",
+      "commands": []
+    },
+    {
+      "path": "<REPO>/agent/extensions/git-worktree/index.ts",
       "commands": []
     },
     {
