@@ -1,0 +1,15 @@
+Implement feature "{{ slug }}" by following its plan.
+
+<plan path="{{ planPath }}">
+{{ plan }}
+</plan>
+
+Reference files (read them when you need detail): {{ docs }}
+
+Rules:
+- Do the tasks in order. After finishing each task, tick its checkbox in {{ planPath }} with the edit tool.
+- If a task is blocked or the plan is wrong, stop and ask with ask_user rather than guessing.
+- When every task is done, run each command in the validation pipeline and check every acceptance criterion.
+- Then call sdd_verify with feature "{{ slug }}". It runs three read-only review agents over the branch scope and returns their report.
+- On REQUEST CHANGES, fix every critical issue and every must-kill item the report lists, then call sdd_verify again. Repeat until it approves.
+- Finish by calling sdd_complete with feature "{{ slug }}" and one result per acceptance criterion: pass or fail, with evidence. sdd_complete refuses to close the feature until verification approves.

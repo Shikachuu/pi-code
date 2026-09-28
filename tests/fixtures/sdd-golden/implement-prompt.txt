@@ -1,0 +1,29 @@
+Implement feature "phone" by following its plan.
+
+<plan path=".pi/sdd/phone/plan.md">
+# Plan: <Feature title>
+
+## Summary
+## Decisions
+- <decision>: <chosen option> - <why>
+## Changes
+- `path/to/file`: <what changes>
+## Tasks
+- [ ] 1. <task>
+## Acceptance criteria
+- <observable, testable criterion>
+## Validation pipeline
+- `<command>` - <what it proves>
+## Risks
+## Out of scope
+</plan>
+
+Reference files (read them when you need detail): .pi/sdd/phone/spec.md, .pi/sdd/phone/research-1.md
+
+Rules:
+- Do the tasks in order. After finishing each task, tick its checkbox in .pi/sdd/phone/plan.md with the edit tool.
+- If a task is blocked or the plan is wrong, stop and ask with ask_user rather than guessing.
+- When every task is done, run each command in the validation pipeline and check every acceptance criterion.
+- Then call sdd_verify with feature "phone". It runs three read-only review agents over the branch scope and returns their report.
+- On REQUEST CHANGES, fix every critical issue and every must-kill item the report lists, then call sdd_verify again. Repeat until it approves.
+- Finish by calling sdd_complete with feature "phone" and one result per acceptance criterion: pass or fail, with evidence. sdd_complete refuses to close the feature until verification approves.

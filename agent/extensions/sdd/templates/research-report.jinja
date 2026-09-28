@@ -1,0 +1,53 @@
+# Research: {{ report.question }}
+
+## Question
+
+{{ report.question }}
+
+## Summary
+
+{{ report.summary }}
+
+## Findings
+
+{% if report.findings %}
+{% for finding in report.findings %}
+- {{ finding }}
+{% endfor %}
+{% else %}
+- None
+{% endif %}
+
+## Implications for this feature
+
+{% if report.implications %}
+{% for implication in report.implications %}
+- {{ implication }}
+{% endfor %}
+{% else %}
+- None
+{% endif %}
+
+## Recommendation
+
+{{ report.recommendation }}
+
+## Open questions
+
+{% if report.openQuestions %}
+{% for question in report.openQuestions %}
+- {{ question }}
+{% endfor %}
+{% else %}
+- None
+{% endif %}
+
+## Sources
+
+{% if report.sources %}
+{% for source in report.sources %}
+- {{ source }}
+{% endfor %}
+{% else %}
+- None
+{% endif %}

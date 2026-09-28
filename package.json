@@ -15,6 +15,7 @@
     "vitest": "5.0.2"
   },
   "dependencies": {
+    "@huggingface/jinja": "0.5.10",
     "@quintinshaw/pi-dynamic-workflows": "3.13.0",
     "pi-hermes-memory": "0.9.9",
     "pi-web-access": "0.31.0"

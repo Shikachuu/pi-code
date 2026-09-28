@@ -1,0 +1,42 @@
+You are planning the implementation of feature "phone". Its files live in .pi/sdd/phone.
+
+<spec>
+# Phone
+
+## Goal
+Add a phone field.
+
+</spec>
+
+<discovery>
+No discovery was run.
+</discovery>
+
+<memory>
+Project memory:
+- uses pnpm
+</memory>
+
+Work in this order:
+1. Read the code the spec and discovery point at until you understand the change. Do not edit any file.
+2. List the information gaps and technical decisions you cannot infer from these inputs or the repo. Resolve each one with the ask_user tool: batch up to 4 questions per call, 2-4 options each, recommended option first, and multiSelect true when several options can apply together. Repeat until nothing is open.
+3. Find the validation pipeline: mise tasks, package scripts, Makefile targets, CI workflows, test runners. If none exists or it is ambiguous, propose options with ask_user.
+4. Write the plan in this format. Every acceptance criterion must be checkable by the validation pipeline or a stated manual step.
+
+# Plan: <Feature title>
+
+## Summary
+## Decisions
+- <decision>: <chosen option> - <why>
+## Changes
+- `path/to/file`: <what changes>
+## Tasks
+- [ ] 1. <task>
+## Acceptance criteria
+- <observable, testable criterion>
+## Validation pipeline
+- `<command>` - <what it proves>
+## Risks
+## Out of scope
+
+5. Call sdd_save_plan with feature "phone", the full plan markdown, and the key decisions. If the user requests changes, revise and call it again.

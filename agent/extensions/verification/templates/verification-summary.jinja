@@ -1,0 +1,114 @@
+## Verification Summary
+
+**Verdict:** {{ verdict }}
+
+**Scope:**
+{{ scope }}
+
+**Overview:** {{ overview }}
+
+### Critical
+{% if critical %}
+{% for line in critical %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+
+### Important
+{% if important %}
+{% for line in important %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+
+### Nits
+{% if nits %}
+{% for line in nits %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+
+{% if testEngineer %}
+### Coverage Gaps (from test-engineer)
+{% if testEngineer.coverageGaps %}
+{% for line in testEngineer.coverageGaps %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+
+### Smoke Test Result (from test-engineer)
+{% if testEngineer.smokeTest %}
+{% for line in testEngineer.smokeTest %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+{% else %}
+### Coverage Gaps (from test-engineer)
+test-engineer did not return a report
+
+### Smoke Test Result (from test-engineer)
+test-engineer did not return a report
+{% endif %}
+
+{% if codeReviewer %}
+### Verification Story (from code-reviewer)
+{% if codeReviewer.verificationStory %}
+{% for line in codeReviewer.verificationStory %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+{% else %}
+### Verification Story (from code-reviewer)
+code-reviewer did not return a report
+{% endif %}
+
+{% if commentAuditor %}
+### Comment Audit (from comment-auditor)
+**MUST KILL**
+{% if commentAuditor.mustKill %}
+{% for line in commentAuditor.mustKill %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+**Correctness**
+{% if commentAuditor.correctness %}
+{% for line in commentAuditor.correctness %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+**Kept**
+{% if commentAuditor.kept %}
+{% for line in commentAuditor.kept %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+**Skipped**
+{% if commentAuditor.skipped %}
+{% for line in commentAuditor.skipped %}
+{{ line }}
+{% endfor %}
+{% else %}
+- none
+{% endif %}
+{% else %}
+### Comment Audit (from comment-auditor)
+comment-auditor did not return a report
+{% endif %}

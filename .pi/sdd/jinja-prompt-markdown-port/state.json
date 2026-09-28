@@ -1,0 +1,8 @@
+{
+  "slug": "jinja-prompt-markdown-port",
+  "title": "Port hand-rolled prompt and markdown templates to @huggingface/jinja",
+  "phase": "implementing",
+  "createdAt": "2026-09-28T09:10:52.425Z",
+  "updatedAt": "2026-09-28T11:36:22.092Z",
+  "verifyRounds": 0
+}

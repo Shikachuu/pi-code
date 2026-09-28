@@ -1,0 +1,13 @@
+<spec>
+{{ spec }}
+</spec>
+{% if existing %}
+
+<existing-discovery>
+{{ existing }}
+</existing-discovery>
+
+Merge the new results into the existing discovery; keep still-valid findings and replace stale ones.
+{% endif %}
+
+Compose the discovery report from the probe results and return it in the markdown field. Do not create or edit any file. Sections: # Discovery, ## Summary, ## Findings (one subsection per probe, each finding with its evidence), ## Pre-answered questions, ## Remaining gaps, ## Relevant files. Keep evidence exactly as reported.

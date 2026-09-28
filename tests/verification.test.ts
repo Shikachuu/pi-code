@@ -351,6 +351,31 @@ test('renderSummary reports a missing agent by name', () => {
   expect(md).toMatch(/comment-auditor did not return a report/)
 })
 
+test('renderSummary renders finding arrows, blocked smoke tests and audit arrows', () => {
+  const md = renderSummary(
+    baseScope(),
+    reports({
+      codeReviewer: {
+        ...must(reports().codeReviewer, 'code reviewer'),
+        findings: [{ severity: 'critical', file: 'a.ts', line: 3, issue: 'bad', fix: 'fix it' }],
+      },
+      testEngineer: {
+        ...must(reports().testEngineer, 'test engineer'),
+        smokeTest: { commands: [], suite: '', manual: '', blocked: ['network'] },
+      },
+      commentAuditor: {
+        ...must(reports().commentAuditor, 'comment auditor'),
+        mustKill: [{ file: 'b.ts', line: 2, issue: 'narration', fix: 'delete' }],
+        kept: [{ file: 'c.ts', line: 1, issue: 'good', fix: 'keep' }],
+      },
+    }),
+  )
+  expect(md).toMatch(/### Critical\n- \[code-reviewer\] a\.ts:3 bad -> fix it/)
+  expect(md).toMatch(/- Commands: none\n- Suite: none\n- Manual: none\n- Blocked: network/)
+  expect(md).toMatch(/\*\*MUST KILL\*\*\n- b\.ts:2 narration -> delete/)
+  expect(md).toMatch(/\*\*Kept\*\*\n- c\.ts:1 good - keep/)
+})
+
 test('all three agentTypes are registered, read-only, and use the expected thinking level', () => {
   const registry = loadAgentRegistry('', {
     projectDir: '/does/not/exist',

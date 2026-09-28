@@ -1,4 +1,11 @@
+import { join } from 'node:path'
+
+import { renderTemplate } from '../lib/jinja.ts'
 import { SPEC_TEMPLATE } from './prompts.ts'
+
+const TEMPLATES = join(import.meta.dirname, 'templates')
+
+const template = (name: string) => join(TEMPLATES, `${name}.jinja`)
 
 export const MAX_PROBES = 10
 
@@ -112,8 +119,6 @@ const FINDINGS_SCHEMA = obj({
 const WEB_TOOLS =
   'Call web_enable first to activate the web tools. Then use web_search and fetch_content. Report only what fetched pages say, with the exact URL.'
 
-const withMemory = (text: string, memory: string) => (memory ? `${text}\n\n${memory}` : text)
-
 export interface EnrichResult {
   scope?: { goal: string; inScope: string[]; nonGoals: string[]; assumptions: string[] }
   repo?: { stack: string; areas: { path: string; why: string }[]; patterns: string[] }
@@ -129,24 +134,17 @@ export interface EnrichResult {
 }
 
 export function enrichArgs(request: string, memory: string) {
-  const req = `<request>\n${request}\n</request>`
   return {
     scope: {
-      prompt: withMemory(
-        `${req}\n\nRestate what this change is for. Give the goal in one sentence, what is in scope, what is explicitly out of scope, and the assumptions you are making. Do not read files.`,
-        memory,
-      ),
+      prompt: renderTemplate(template('enrich-scope'), { request, memory }),
       schema: obj({ goal: str, inScope: strList, nonGoals: strList, assumptions: strList }),
     },
     repo: {
-      prompt: `${req}\n\nSkim this repository to ground the request. Use at most 8 tool calls. Report the language, framework and key libraries, the files or directories this change will likely touch (with why), and existing patterns the change should follow.`,
+      prompt: renderTemplate(template('enrich-repo'), { request }),
       schema: obj({ stack: str, areas: { type: 'array', items: obj({ path: str, why: str }) }, patterns: strList }),
     },
     questions: {
-      prompt: withMemory(
-        `${req}\n\nList up to 4 product-level questions whose answers change what gets built, and that the request does not answer. Skip anything a developer can decide later. Each question needs a short header (at most 12 characters) and 2-4 distinct options, recommended option first. Set multiSelect true when more than one option can apply. Return an empty list when the request is clear.`,
-        memory,
-      ),
+      prompt: renderTemplate(template('enrich-questions'), { request, memory }),
       schema: QUESTION_SCHEMA,
     },
   }
@@ -160,18 +158,18 @@ export function draftArgs(input: {
   draft?: string
   feedback?: string
 }) {
-  const context = `<request>\n${input.request}\n</request>\n\n<enrichment>\n${JSON.stringify(input.enrichment, null, 2)}\n</enrichment>${input.answers ? `\n\n<user-answers>\n${input.answers}\n</user-answers>` : ''}`
-  const task =
-    input.draft && input.feedback
-      ? `Revise this spec draft to address the user's feedback. Keep everything the feedback does not touch.\n\n<draft>\n${input.draft}\n</draft>\n\n<feedback>\n${input.feedback}\n</feedback>`
-      : 'Compose a feature spec from this input.'
   return {
     label: input.draft ? 'revise spec' : 'draft spec',
     tier: 'small',
-    prompt: withMemory(
-      `${context}\n\n${task}\n\nThe spec describes what and why, not how. Return it in the markdown field and do not create or edit any file. Use this markdown template:\n\n${SPEC_TEMPLATE}\n\nAlso return a short kebab-case slug for the feature (for example phone-number-field) and a title.`,
-      input.memory,
-    ),
+    prompt: renderTemplate(template('draft-prompt'), {
+      request: input.request,
+      enrichment: JSON.stringify(input.enrichment, null, 2),
+      answers: input.answers,
+      draft: input.draft ?? '',
+      feedback: input.feedback ?? '',
+      specTemplate: SPEC_TEMPLATE,
+      memory: input.memory,
+    }),
     schema: obj({ slug: str, title: str, markdown: str }),
   }
 }
@@ -186,10 +184,7 @@ export function discoveryArgs(spec: string, existing: string | undefined, memory
       hints: '',
     },
     plan: {
-      prompt: withMemory(
-        `<spec>\n${spec}\n</spec>\n\nPlan a quick discovery pass that answers what a planner will need to know. Propose up to ${MAX_PROBES} independent probes. Use kind "code" for endpoints, handlers and call sites, "schema" for models, migrations and validation, "deps" for existing dependencies and versions, and "web" for library or standard research that depends on the stack. Each probe asks one concrete question and gives search hints.`,
-        memory,
-      ),
+      prompt: renderTemplate(template('discovery-plan'), { spec, memory, maxProbes: MAX_PROBES }),
       schema: obj({
         probes: {
           type: 'array',
@@ -204,39 +199,37 @@ export function discoveryArgs(spec: string, existing: string | undefined, memory
       }),
     },
     probe: {
-      prompt: `<spec>\n${spec}\n</spec>\n\nAnswer the probe below with low effort: use at most 10 tool calls. Cite evidence as path:line for code or a URL for web facts. List what you answered and what stays open.`,
+      prompt: renderTemplate(template('discovery-probe'), { spec }),
       web: WEB_TOOLS,
       schema: FINDINGS_SCHEMA,
     },
     synth: {
-      prompt: `<spec>\n${spec}\n</spec>${existing ? `\n\n<existing-discovery>\n${existing}\n</existing-discovery>\n\nMerge the new results into the existing discovery; keep still-valid findings and replace stale ones.` : ''}\n\nCompose the discovery report from the probe results and return it in the markdown field. Do not create or edit any file. Sections: # Discovery, ## Summary, ## Findings (one subsection per probe, each finding with its evidence), ## Pre-answered questions, ## Remaining gaps, ## Relevant files. Keep evidence exactly as reported.`,
+      prompt: renderTemplate(template('discovery-synth'), { spec, existing: existing ?? '' }),
       schema: obj({ markdown: str }),
     },
   }
 }
 
 export function researchArgs(topic: string, spec: string, discovery: string | undefined) {
-  const context = `<spec>\n${spec}\n</spec>${discovery ? `\n\n<discovery>\n${discovery}\n</discovery>` : ''}`
   return {
     question: topic,
     angles: 4,
     queries: {
-      prompt: `${context}\n\nPlan web research for this topic in the context of the feature above:\n${topic}\n\nProduce 4 diverse, specific search queries that together cover it.`,
+      prompt: renderTemplate(template('research-queries'), { spec, discovery: discovery ?? '', topic }),
       schema: obj({ queries: strList }),
     },
     gather: {
-      prompt: `${WEB_TOOLS}\nSearch for the query, fetch the 2 most relevant results, and extract concrete, verifiable claims, each with the exact source URL. Do not invent sources.`,
+      prompt: renderTemplate(template('research-gather')),
       schema: obj({ sources: { type: 'array', items: obj({ url: str, claims: strList }) } }),
     },
     verify: {
-      prompt:
-        'Cross-check these sources. Group claims that state the same fact. Keep a claim only if at least 2 distinct URLs or one clearly authoritative source support it. Drop claims that conflict or come from one weak source.',
+      prompt: renderTemplate(template('research-verify')),
       schema: obj({ supported: { type: 'array', items: obj({ claim: str, sources: strList }) }, discarded: strList }, [
         'supported',
       ]),
     },
     report: {
-      prompt: `${context}\n\nTopic: ${topic}\n\nCompose a research report from the supported claims only, returned in the schema fields. Do not create or edit any file. Relate them to the feature above: what they imply for it and what you recommend. Say so when the evidence is thin.`,
+      prompt: renderTemplate(template('research-report-prompt'), { spec, discovery: discovery ?? '', topic }),
       schema: obj({
         summary: str,
         findings: { type: 'array', items: obj({ claim: str, sources: strList }) },

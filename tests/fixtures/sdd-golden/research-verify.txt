@@ -1,0 +1,1 @@
+Cross-check these sources. Group claims that state the same fact. Keep a claim only if at least 2 distinct URLs or one clearly authoritative source support it. Drop claims that conflict or come from one weak source.

@@ -13,7 +13,13 @@ import { expect, test, vi } from 'vitest'
 import register from '../agent/extensions/sdd/index.ts'
 import { memoryBlock, parseEntries } from '../agent/extensions/sdd/memory.ts'
 import type { ProgressState } from '../agent/extensions/sdd/progress.ts'
-import { renderResearch, validatePlan } from '../agent/extensions/sdd/prompts.ts'
+import {
+  demoteHeadings,
+  readSection,
+  renderResearch,
+  replaceSection,
+  validatePlan,
+} from '../agent/extensions/sdd/prompts.ts'
 import { SCOUT, type WorkflowRunner } from '../agent/extensions/sdd/runner.ts'
 import {
   createFeature,
@@ -1170,6 +1176,32 @@ test('plan sections ignore headings inside code fences', () => {
   )
   expect(validatePlan(plan)).toEqual([])
   expect(validatePlan(VALID_PLAN.replace('## Tasks', '## tasks'))).toEqual([])
+})
+
+test('readSection trims bodies, matches case-insensitively and returns undefined when missing', () => {
+  const md = '# Doc\n\n## Tasks\n\n- [ ] one\n\n## Other\nx\n'
+  expect(readSection(md, 'Tasks')).toBe('- [ ] one')
+  expect(readSection(md, 'tasks')).toBe('- [ ] one')
+  expect(readSection(md, 'Missing')).toBeUndefined()
+})
+
+test('section scanning and demoteHeadings both ignore `##` lines inside code fences', () => {
+  const md = '## Section\n\n```bash\n## not a heading\n# nope\n```\n\ntext\n\n## Next\nbody\n'
+  expect(readSection(md, 'Section')).toBe('```bash\n## not a heading\n# nope\n```\n\ntext')
+  const demoted = demoteHeadings(md)
+  expect(demoted).toContain('```bash\n## not a heading\n# nope\n```')
+  expect(demoted).toContain('### Section')
+  expect(demoted).toContain('### Next')
+})
+
+test('replaceSection replaces in place and appends a missing section with one trailing newline', () => {
+  const md = '# Plan\n\n## Tasks\n- [ ] one\n\n## Risks\nnone\n'
+  const replaced = replaceSection(md, 'Tasks', '- [x] one')
+  expect(replaced).toBe('# Plan\n\n## Tasks\n\n- [x] one\n\n## Risks\nnone\n')
+  expect(replaced.endsWith('\n') && !replaced.endsWith('\n\n')).toBe(true)
+  const appended = replaceSection(md, 'Results', '- pass')
+  expect(appended.endsWith('## Results\n\n- pass\n')).toBe(true)
+  expect(appended.endsWith('\n\n')).toBe(false)
 })
 
 test('progress widget draws a bordered box with a spinner, recent results and stats', async () => {

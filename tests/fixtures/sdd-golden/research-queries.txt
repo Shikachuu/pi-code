@@ -1,0 +1,20 @@
+<spec>
+# Phone
+
+## Goal
+Add a phone field.
+
+</spec>
+
+<discovery>
+# Discovery
+
+## Summary
+Found things.
+
+</discovery>
+
+Plan web research for this topic in the context of the feature above:
+phone validation
+
+Produce 4 diverse, specific search queries that together cover it.

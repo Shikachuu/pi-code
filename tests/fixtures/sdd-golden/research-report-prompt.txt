@@ -1,0 +1,19 @@
+<spec>
+# Phone
+
+## Goal
+Add a phone field.
+
+</spec>
+
+<discovery>
+# Discovery
+
+## Summary
+Found things.
+
+</discovery>
+
+Topic: phone validation
+
+Compose a research report from the supported claims only, returned in the schema fields. Do not create or edit any file. Relate them to the feature above: what they imply for it and what you recommend. Say so when the evidence is thin.

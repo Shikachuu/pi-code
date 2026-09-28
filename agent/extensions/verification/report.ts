@@ -1,4 +1,9 @@
+import { join } from 'node:path'
+
+import { renderTemplate } from '../lib/jinja.ts'
 import type { Scope } from './scope.ts'
+
+const SUMMARY_TEMPLATE = join(import.meta.dirname, 'templates', 'verification-summary.jinja')
 
 const str = { type: 'string' } as const
 const strList = { type: 'array', items: str } as const
@@ -186,81 +191,53 @@ function auditLine(item: AuditItem, arrow: string): string {
   return bullet(`${item.file}:${item.line} ${item.issue}${item.fix ? ` ${arrow} ${item.fix}` : ''}`)
 }
 
-function section(title: string, lines: string[]): string {
-  return `### ${title}\n${lines.length ? lines.join('\n') : '- none'}`
+function smokeTestLines(smokeTest: TestEngineerReport['smokeTest']): string[] {
+  return [
+    bullet(`Commands: ${smokeTest.commands.join(', ') || 'none'}`),
+    bullet(`Suite: ${smokeTest.suite || 'none'}`),
+    bullet(`Manual: ${smokeTest.manual || 'none'}`),
+    ...(smokeTest.blocked.length ? [bullet(`Blocked: ${smokeTest.blocked.join(', ')}`)] : []),
+  ]
 }
 
 export function renderSummary(scope: Scope, reports: Reports): string {
   const merged = mergeFindings(reports)
-  const v = verdict(reports, merged)
-  const critical = merged.filter((f) => f.severity === 'critical').map(findingLine)
-  const important = merged.filter((f) => f.severity === 'important').map(findingLine)
-  const nits = merged.filter((f) => f.severity === 'nit').map(findingLine)
-
   const overviewParts = [
     reports.codeReviewer?.overview,
     reports.testEngineer?.overview,
     reports.commentAuditor?.overview,
   ].filter(Boolean)
-  const overview = overviewParts.length ? overviewParts.join(' ') : 'No reports were returned.'
-
-  const parts: string[] = []
-  parts.push('## Verification Summary')
-  parts.push(`**Verdict:** ${v}`)
-  parts.push(
-    `**Scope:**\n${scope.target} (${scope.kind}) - ${scope.files.length} file(s). Commands: ${scope.commands.join('; ')}`,
-  )
-  parts.push(`**Overview:** ${overview}`)
-  parts.push(section('Critical', critical))
-  parts.push(section('Important', important))
-  parts.push(section('Nits', nits))
-
-  parts.push(
-    reports.testEngineer
-      ? section('Coverage Gaps (from test-engineer)', reports.testEngineer.coverageGaps.map(bullet))
-      : '### Coverage Gaps (from test-engineer)\ntest-engineer did not return a report',
-  )
-
-  if (reports.testEngineer) {
-    const st = reports.testEngineer.smokeTest
-    const lines = [
-      bullet(`Commands: ${st.commands.join(', ') || 'none'}`),
-      bullet(`Suite: ${st.suite || 'none'}`),
-      bullet(`Manual: ${st.manual || 'none'}`),
-      ...(st.blocked.length ? [bullet(`Blocked: ${st.blocked.join(', ')}`)] : []),
-    ]
-    parts.push(section('Smoke Test Result (from test-engineer)', lines))
-  } else {
-    parts.push('### Smoke Test Result (from test-engineer)\ntest-engineer did not return a report')
-  }
-
-  if (reports.codeReviewer) {
-    const vs = reports.codeReviewer.verificationStory
-    const lines = [
-      bullet(`Tests reviewed: ${vs.testsReviewed}`),
-      bullet(`Build verified: ${vs.buildVerified}`),
-      bullet(`Security checked: ${vs.securityChecked}`),
-    ]
-    parts.push(section('Verification Story (from code-reviewer)', lines))
-  } else {
-    parts.push('### Verification Story (from code-reviewer)\ncode-reviewer did not return a report')
-  }
-
-  if (reports.commentAuditor) {
-    const a = reports.commentAuditor
-    const lines: string[] = []
-    lines.push('**MUST KILL**')
-    lines.push(...(a.mustKill.length ? a.mustKill.map((i) => auditLine(i, '->')) : ['- none']))
-    lines.push('**Correctness**')
-    lines.push(...(a.correctness.length ? a.correctness.map((i) => auditLine(i, '->')) : ['- none']))
-    lines.push('**Kept**')
-    lines.push(...(a.kept.length ? a.kept.map((i) => auditLine(i, '-')) : ['- none']))
-    lines.push('**Skipped**')
-    lines.push(...(a.skipped.length ? a.skipped.map(bullet) : ['- none']))
-    parts.push(`### Comment Audit (from comment-auditor)\n${lines.join('\n')}`)
-  } else {
-    parts.push('### Comment Audit (from comment-auditor)\ncomment-auditor did not return a report')
-  }
-
-  return parts.join('\n\n')
+  const auditor = reports.commentAuditor
+  const reviewer = reports.codeReviewer
+  return renderTemplate(SUMMARY_TEMPLATE, {
+    verdict: verdict(reports, merged),
+    scope: `${scope.target} (${scope.kind}) - ${scope.files.length} file(s). Commands: ${scope.commands.join('; ')}`,
+    overview: overviewParts.length ? overviewParts.join(' ') : 'No reports were returned.',
+    critical: merged.filter((f) => f.severity === 'critical').map(findingLine),
+    important: merged.filter((f) => f.severity === 'important').map(findingLine),
+    nits: merged.filter((f) => f.severity === 'nit').map(findingLine),
+    testEngineer: reports.testEngineer
+      ? {
+          coverageGaps: reports.testEngineer.coverageGaps.map(bullet),
+          smokeTest: smokeTestLines(reports.testEngineer.smokeTest),
+        }
+      : null,
+    codeReviewer: reviewer
+      ? {
+          verificationStory: [
+            bullet(`Tests reviewed: ${reviewer.verificationStory.testsReviewed}`),
+            bullet(`Build verified: ${reviewer.verificationStory.buildVerified}`),
+            bullet(`Security checked: ${reviewer.verificationStory.securityChecked}`),
+          ],
+        }
+      : null,
+    commentAuditor: auditor
+      ? {
+          mustKill: auditor.mustKill.map((i) => auditLine(i, '->')),
+          correctness: auditor.correctness.map((i) => auditLine(i, '->')),
+          kept: auditor.kept.map((i) => auditLine(i, '-')),
+          skipped: auditor.skipped.map(bullet),
+        }
+      : null,
+  })
 }

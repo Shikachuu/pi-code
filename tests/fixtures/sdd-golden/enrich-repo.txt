@@ -1,0 +1,5 @@
+<request>
+add a phone field
+</request>
+
+Skim this repository to ground the request. Use at most 8 tool calls. Report the language, framework and key libraries, the files or directories this change will likely touch (with why), and existing patterns the change should follow.

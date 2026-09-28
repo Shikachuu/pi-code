@@ -1,29 +1,14 @@
-export const SPEC_TEMPLATE = `# <Feature title>
+import { join } from 'node:path'
 
-## Goal
-## Background
-## Scope
-## Non-goals
-## Expected behaviour
-## Constraints
-## Assumptions
-## Open questions`
+import { renderTemplate } from '../lib/jinja.ts'
 
-export const PLAN_TEMPLATE = `# Plan: <Feature title>
+const TEMPLATES = join(import.meta.dirname, 'templates')
 
-## Summary
-## Decisions
-- <decision>: <chosen option> - <why>
-## Changes
-- \`path/to/file\`: <what changes>
-## Tasks
-- [ ] 1. <task>
-## Acceptance criteria
-- <observable, testable criterion>
-## Validation pipeline
-- \`<command>\` - <what it proves>
-## Risks
-## Out of scope`
+const template = (name: string) => join(TEMPLATES, `${name}.jinja`)
+
+export const SPEC_TEMPLATE = renderTemplate(template('spec-template'))
+
+export const PLAN_TEMPLATE = renderTemplate(template('plan-template'))
 
 export interface ResearchReport {
   question: string
@@ -66,7 +51,18 @@ export function readSection(markdown: string, heading: string): string | undefin
 // A section body must not carry its own `##` heading, or sectionBounds reads it
 // as the end of the section it is being written into.
 export function demoteHeadings(markdown: string): string {
-  return markdown.replace(/^(#{1,5})\s/gm, (_line, hashes: string) => `${hashes}# `)
+  let fenced = false
+  return markdown
+    .split('\n')
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        fenced = !fenced
+        return line
+      }
+      if (fenced) return line
+      return line.replace(/^(#{1,5})\s/, (_match, hashes: string) => `${hashes}# `)
+    })
+    .join('\n')
 }
 
 export function replaceSection(markdown: string, heading: string, body: string): string {
@@ -91,24 +87,17 @@ export function validatePlan(markdown: string): string[] {
 
 export function renderResearch(report: ResearchReport): string {
   const sources = [...new Set(report.findings.flatMap((f) => f.sources))]
-  const list = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).join('\n') : '- None')
-  return [
-    `# Research: ${report.question}`,
-    '## Question',
-    report.question,
-    '## Summary',
-    report.summary,
-    '## Findings',
-    list(report.findings.map((f) => `${f.claim} (${f.sources.join(', ')})`)),
-    '## Implications for this feature',
-    list(report.implications),
-    '## Recommendation',
-    report.recommendation,
-    '## Open questions',
-    list(report.openQuestions),
-    '## Sources',
-    list(sources),
-  ].join('\n\n')
+  return renderTemplate(template('research-report'), {
+    report: {
+      question: report.question,
+      summary: report.summary,
+      findings: report.findings.map((f) => `${f.claim} (${f.sources.join(', ')})`),
+      implications: report.implications,
+      recommendation: report.recommendation,
+      openQuestions: report.openQuestions,
+      sources,
+    },
+  })
 }
 
 export interface PlanPromptInput {
@@ -122,25 +111,15 @@ export interface PlanPromptInput {
 
 export function planPrompt(input: PlanPromptInput): string {
   const research = input.research.map((r) => `<research path="${r.path}">\n${r.content}\n</research>`).join('\n\n')
-  return `You are planning the implementation of feature "${input.slug}". Its files live in ${input.dir}.
-
-<spec>
-${input.spec}
-</spec>
-
-<discovery>
-${input.discovery ?? 'No discovery was run.'}
-</discovery>
-${research ? `\n${research}\n` : ''}${input.memory ? `\n${input.memory}\n` : ''}
-Work in this order:
-1. Read the code the spec and discovery point at until you understand the change. Do not edit any file.
-2. List the information gaps and technical decisions you cannot infer from these inputs or the repo. Resolve each one with the ask_user tool: batch up to 4 questions per call, 2-4 options each, recommended option first, and multiSelect true when several options can apply together. Repeat until nothing is open.
-3. Find the validation pipeline: mise tasks, package scripts, Makefile targets, CI workflows, test runners. If none exists or it is ambiguous, propose options with ask_user.
-4. Write the plan in this format. Every acceptance criterion must be checkable by the validation pipeline or a stated manual step.
-
-${PLAN_TEMPLATE}
-
-5. Call sdd_save_plan with feature "${input.slug}", the full plan markdown, and the key decisions. If the user requests changes, revise and call it again.`
+  return renderTemplate(template('plan-prompt'), {
+    slug: input.slug,
+    dir: input.dir,
+    spec: input.spec,
+    discovery: input.discovery ?? '',
+    research,
+    memory: input.memory,
+    planTemplate: PLAN_TEMPLATE,
+  })
 }
 
 export interface ImplementPromptInput {
@@ -151,19 +130,10 @@ export interface ImplementPromptInput {
 }
 
 export function implementPrompt(input: ImplementPromptInput): string {
-  return `Implement feature "${input.slug}" by following its plan.
-
-<plan path="${input.planPath}">
-${input.plan}
-</plan>
-
-Reference files (read them when you need detail): ${input.docs.join(', ')}
-
-Rules:
-- Do the tasks in order. After finishing each task, tick its checkbox in ${input.planPath} with the edit tool.
-- If a task is blocked or the plan is wrong, stop and ask with ask_user rather than guessing.
-- When every task is done, run each command in the validation pipeline and check every acceptance criterion.
-- Then call sdd_verify with feature "${input.slug}". It runs three read-only review agents over the branch scope and returns their report.
-- On REQUEST CHANGES, fix every critical issue and every must-kill item the report lists, then call sdd_verify again. Repeat until it approves.
-- Finish by calling sdd_complete with feature "${input.slug}" and one result per acceptance criterion: pass or fail, with evidence. sdd_complete refuses to close the feature until verification approves.`
+  return renderTemplate(template('implement-prompt'), {
+    slug: input.slug,
+    plan: input.plan,
+    planPath: input.planPath,
+    docs: input.docs.join(', '),
+  })
 }
