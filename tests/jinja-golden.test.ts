@@ -11,9 +11,10 @@ import {
   renderResearch,
 } from '../agent/extensions/sdd/prompts.ts'
 import { MAX_PROBES, draftArgs, discoveryArgs, enrichArgs, researchArgs } from '../agent/extensions/sdd/workflows.ts'
-import { type Reports, renderSummary } from '../agent/extensions/verification/report.ts'
+import { renderSummary } from '../agent/extensions/verification/report.ts'
 import type { Scope } from '../agent/extensions/verification/scope.ts'
 import { expectGolden } from './golden.ts'
+import { reports } from './helpers.ts'
 
 const SPEC = '# Phone\n\n## Goal\nAdd a phone field.\n'
 const DISCOVERY = '# Discovery\n\n## Summary\nFound things.\n'
@@ -38,34 +39,6 @@ const ENRICHMENT = {
   scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
   repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
   questions: { questions: [] },
-}
-
-function reports(overrides: Partial<Reports> = {}): Reports {
-  return {
-    codeReviewer: {
-      verdict: 'APPROVE',
-      overview: 'Looks fine.',
-      findings: [],
-      verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'yes' },
-    },
-    testEngineer: {
-      verdict: 'APPROVE',
-      overview: 'Coverage is fine.',
-      findings: [],
-      coverageGaps: [],
-      smokeTest: { commands: ['npm test'], suite: 'passed', manual: '', blocked: [] },
-    },
-    commentAuditor: {
-      verdict: 'APPROVE',
-      overview: 'Comments are clean.',
-      mustKill: [],
-      correctness: [],
-      nits: [],
-      kept: [],
-      skipped: [],
-    },
-    ...overrides,
-  }
 }
 
 test('rendered sdd templates match the pre-port goldens byte for byte', () => {
@@ -335,5 +308,6 @@ test('rendered prompts contain no unrendered template syntax', () => {
   for (const [name, text] of rendered) {
     assert.isFalse(text.includes('{{'), `${name} contains unrendered {{`)
     assert.isFalse(text.includes('{%'), `${name} contains unrendered {%`)
+    assert.isFalse(text.includes('\r'), `${name} contains a carriage return`)
   }
 })

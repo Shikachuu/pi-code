@@ -62,3 +62,12 @@ test('renderTemplate renders an unknown variable as empty rather than throwing',
   writeFileSync(path, 'a{{ missing }}b')
   expect(renderTemplate(path)).toBe('ab')
 })
+
+test('renderTemplate keys the cache by full path, not basename', () => {
+  const first = templatePath(mkdtempSync(join(tmpdir(), 'jinja-a-')), 'same')
+  const second = templatePath(mkdtempSync(join(tmpdir(), 'jinja-b-')), 'same')
+  writeFileSync(first, 'A={{ v }}')
+  writeFileSync(second, 'B={{ v }}')
+  expect(renderTemplate(first, { v: '1' })).toBe('A=1')
+  expect(renderTemplate(second, { v: '2' })).toBe('B=2')
+})

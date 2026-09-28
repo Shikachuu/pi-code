@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path'
 
 import { expect } from 'vitest'
 
+import type { Reports } from '../agent/extensions/verification/report.ts'
+
 export const REPO = resolve(import.meta.dirname, '..')
 export const AGENT_DIR = join(REPO, 'agent')
 
@@ -61,4 +63,32 @@ export function matchSnapshot(name: string, actual: string): void {
     throw new Error(`missing snapshot ${name}; run \`mise run snapshot\``)
   }
   expect(actual, `snapshot ${name} changed; review, then run \`mise run snapshot\``).toBe(expected)
+}
+
+export function reports(overrides: Partial<Reports> = {}): Reports {
+  return {
+    codeReviewer: {
+      verdict: 'APPROVE',
+      overview: 'Looks fine.',
+      findings: [],
+      verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'yes' },
+    },
+    testEngineer: {
+      verdict: 'APPROVE',
+      overview: 'Coverage is fine.',
+      findings: [],
+      coverageGaps: [],
+      smokeTest: { commands: ['npm test'], suite: 'passed', manual: '', blocked: [] },
+    },
+    commentAuditor: {
+      verdict: 'APPROVE',
+      overview: 'Comments are clean.',
+      mustKill: [],
+      correctness: [],
+      nits: [],
+      kept: [],
+      skipped: [],
+    },
+    ...overrides,
+  }
 }

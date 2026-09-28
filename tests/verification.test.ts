@@ -9,10 +9,10 @@ import { expect, test } from 'vitest'
 
 import type { WorkflowRunner } from '../agent/extensions/sdd/runner.ts'
 import register from '../agent/extensions/verification/index.ts'
-import { type Reports, mergeFindings, renderSummary, verdict } from '../agent/extensions/verification/report.ts'
+import { mergeFindings, renderSummary, verdict } from '../agent/extensions/verification/report.ts'
 import { type Scope, formatScope, isLarge, resolveScope } from '../agent/extensions/verification/scope.ts'
 import { VERIFY_SCRIPT, verifyArgs } from '../agent/extensions/verification/workflow.ts'
-import { asMock, must } from './helpers.ts'
+import { asMock, must, reports } from './helpers.ts'
 
 const AGENT_DIR = join(import.meta.dirname, '..', 'agent')
 
@@ -233,34 +233,6 @@ test('verify runs exactly three agent calls with identical scope, tier medium an
     JSON.stringify({ codeReviewer: null, testEngineer: null, commentAuditor: null }),
   )
 })
-
-function reports(overrides: Partial<Reports> = {}): Reports {
-  return {
-    codeReviewer: {
-      verdict: 'APPROVE',
-      overview: 'Looks fine.',
-      findings: [],
-      verificationStory: { testsReviewed: 'yes', buildVerified: 'yes', securityChecked: 'yes' },
-    },
-    testEngineer: {
-      verdict: 'APPROVE',
-      overview: 'Coverage is fine.',
-      findings: [],
-      coverageGaps: [],
-      smokeTest: { commands: ['npm test'], suite: 'passed', manual: '', blocked: [] },
-    },
-    commentAuditor: {
-      verdict: 'APPROVE',
-      overview: 'Comments are clean.',
-      mustKill: [],
-      correctness: [],
-      nits: [],
-      kept: [],
-      skipped: [],
-    },
-    ...overrides,
-  }
-}
 
 test('mergeFindings dedupes at file:line, keeps the higher severity, and attributes [all]', () => {
   const r = reports({
