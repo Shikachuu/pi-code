@@ -78,7 +78,6 @@ function isChangeSet(value: boolean | number | undefined): boolean {
   return value === true || (typeof value === 'number' && value > 0)
 }
 
-/** Parse the schema-2 `wt list --format=json` envelope. */
 export function parseEnvelope(raw: string): WtEnvelope | undefined {
   let data: unknown
   try {

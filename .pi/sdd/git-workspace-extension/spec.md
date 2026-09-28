@@ -38,8 +38,8 @@ Three new auto-discovered extensions, each with `index.ts` plus small pure modul
 
 **`agent/extensions/git-commit/`** - one `commit` tool, no commands.
 
-- Reads the staged diff, returns guidance derived from the rules the skill documents so the model writes `<type>: <summary>`, shows it, and only then asks for approval before `git commit` runs locally.
-- `push: true` commits locally and then stops: the tool tells the model to ask the user explicitly before any network write. Declining leaves the commit local and touches nothing remote.
+- Reads the staged diff, returns guidance derived from the rules the skill documents so the model writes `<type>: <summary>`, and commits the staged changes when called with a message. Commits are non-destructive and need no approval gate.
+- `push: true` commits locally, then pushes only after a `ctx.ui.confirm`; declining leaves the commit local and touches nothing remote. With no UI the tool returns guidance text and never pushes.
 - Delete `agent/skills/commit-message/` so the rules have a single owner. The rules become `promptGuidelines` on the tool, which is where a model actually reads them.
 
 **Shared and repo-level**
@@ -65,7 +65,7 @@ Three new auto-discovered extensions, each with `index.ts` plus small pure modul
 - `create` goes through `wt switch -c`/its create path and fails with a readable message if the branch or worktree already exists.
 - `remove` refuses when the worktree is dirty unless forced, and goes through `wt remove` so Worktrunk's cleanup rules apply.
 - `status` reports branch, path and dirty state for the repo it is invoked in.
-- The `commit` tool returns the staged diff plus the message rules; a message with staged changes matches `<type>: <summary>` from the allowed type set, summary lowercase, present tense, <= 72 chars, with a body only when the diff does not explain the reason. The tool does not run `git commit` until the model has shown the message and the user approved.
+- The `commit` tool returns the staged diff plus the message rules; a message with staged changes matches `<type>: <summary>` from the allowed type set, summary lowercase, present tense, <= 72 chars, with a body only when the diff does not explain the reason. With a message it commits the staged changes immediately (commits are non-destructive and take no approval gate), and `push: true` pushes only after the user confirms.
 - The `commit` tool with nothing staged reports that plainly instead of diffing an empty index.
 - With `push: true` the commit is local and the tool's result instructs the model to ask before pushing. Declining leaves the commit in place.
 - `pr create` builds a body from the local commits and asks before sending it to GitHub.

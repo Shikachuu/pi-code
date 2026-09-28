@@ -50,7 +50,7 @@ In addition to the tools above, you may have access to other custom tools depend
 - Use the gh tool for GitHub and pull request work; git handles local commits and worktrees.
 - Read-only operations (auth, repo view, pr view, pr checks) never prompt. pr create and pr update build the request, ask for confirmation, and only then call gh.
 - pr create builds the body from local commits ahead of the base branch; pass title or body to override it.
-- Use the worktree tool for every worktree operation; never call raw `git worktree`, because wt owns worktree layout, hooks and activity markers.
+- Use the worktree tool for every worktree operation; never call raw `git worktree`, because wt owns worktree layout and hooks.
 - worktree create and switch do not change the agent working directory; pass the reported path as cwd when you need to run commands in that worktree.
 - worktree remove refuses a dirty worktree unless force is true, and wt deletes the branch unless keepBranch is true.
 - Use this tool proactively when the user corrects you, shares a preference, or reveals durable environment or project facts.

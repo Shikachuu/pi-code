@@ -301,3 +301,59 @@ test('subjects without a usable type return the format hint', () => {
     expect(validateSubject(subject).join('\n')).toMatch(/must match/)
   }
 })
+
+test('a staged diff larger than the output cap is truncated', async () => {
+  const cwd = initRepo()
+  const big = Array.from({ length: 2100 }, (_, i) => `line ${i}`).join('\n')
+  writeFileSync(join(cwd, 'big.txt'), `${big}\n`)
+  git(cwd, ['add', 'big.txt'])
+  const result = await loadTool().execute('id', {}, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toContain('truncated; showing the last')
+})
+
+test('a non-repository cwd reports a bounded git diff failure', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'commit-nonrepo-'))
+  const result = await loadTool().execute('id', {}, undefined, undefined, ctx(cwd))
+  const text = resultText(result)
+  expect(text).toMatch(/git diff --cached failed with exit code/)
+  expect(text.length).toBeLessThan(4000)
+})
+
+test('commit resolves with error text when the signal is already aborted', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const controller = new AbortController()
+  controller.abort()
+  const result = await loadTool().execute('id', {}, controller.signal, undefined, ctx(cwd))
+  expect(resultText(result)).toMatch(/abort|failed with exit code/)
+})
+
+test('commit falls back to the message subject when git log fails', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const realGit = which('git')
+  stubOnPath('git', `if [ "$1" = "log" ]; then exit 1; fi\nexec ${shellQuote(realGit)} "$@"`)
+  const result = await loadTool().execute('id', { message: 'feat: add more' }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toMatch(/Committed:\nfeat: add more/)
+})
+
+test('a failing rev-parse reports the branch as unknown in the push prompt', async () => {
+  const cwd = repoWithRemote()
+  stage(cwd, 'b.txt', 'b\n')
+  const realGit = which('git')
+  stubOnPath('git', `if [ "$1" = "rev-parse" ]; then exit 1; fi\nexec ${shellQuote(realGit)} "$@"`)
+  let confirmMessage = ''
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd,
+    hasUI: true,
+    ui: {
+      confirm: async (_title: string, message: string) => {
+        confirmMessage = message
+        return false
+      },
+      notify: () => {},
+    },
+  })
+  await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, capturingCtx)
+  expect(confirmMessage).toContain('(unknown)')
+})

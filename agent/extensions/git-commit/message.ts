@@ -27,9 +27,6 @@ export function isPastTense(summary: string): boolean {
   return /ed$/i.test(first) && first.length > 3
 }
 
-/**
- * Advisory hints for a commit subject. A non-empty array never blocks the commit.
- */
 export function validateSubject(subject: string): string[] {
   const hints: string[] = []
   const firstLine = (subject.split('\n')[0] ?? '').trim()

@@ -1,10 +1,10 @@
 import { execFile, type ExecFileOptions } from 'node:child_process'
 
+import { truncateTail } from '@earendil-works/pi-coding-agent'
+
 export interface RunOptions {
   cwd?: string | undefined
   signal?: AbortSignal | undefined
-  env?: NodeJS.ProcessEnv | undefined
-  timeout?: number | undefined
 }
 
 export interface RunResult {
@@ -18,6 +18,13 @@ export interface RunResult {
 
 const MAX_BUFFER = 10 * 1024 * 1024
 
+/** Bound command output the same way the built-in tools do. */
+export function truncateOutput(text: string, maxLines?: number): string {
+  const result = truncateTail(text, maxLines === undefined ? undefined : { maxLines })
+  if (!result.truncated) return text
+  return `${result.content}\n\n[... truncated; showing the last ${result.outputLines} of ${result.totalLines} lines]`
+}
+
 /**
  * Run a command with an argument array and never throw on a non-zero exit.
  * Failures are returned as `{ ok: false }` with the command's stderr so tools can
@@ -28,8 +35,6 @@ export function run(command: string, args: string[], options: RunOptions = {}): 
     const execOptions: ExecFileOptions = { maxBuffer: MAX_BUFFER }
     if (options.cwd !== undefined) execOptions.cwd = options.cwd
     if (options.signal !== undefined) execOptions.signal = options.signal
-    if (options.env !== undefined) execOptions.env = options.env
-    if (options.timeout !== undefined) execOptions.timeout = options.timeout
     execFile(command, args, execOptions, (error, stdout, stderr) => {
       const out = typeof stdout === 'string' ? stdout : ''
       const err = typeof stderr === 'string' ? stderr : ''
@@ -47,17 +52,4 @@ export function run(command: string, args: string[], options: RunOptions = {}): 
       })
     })
   })
-}
-
-export async function tryRun(
-  command: string,
-  args: string[],
-  options: RunOptions = {},
-): Promise<RunResult | undefined> {
-  const result = await run(command, args, options)
-  return result.ok ? result : undefined
-}
-
-export function missingBinary(command: string, result: RunResult): string | undefined {
-  return result.missing ? `${command} (not found on PATH): ${result.stderr.trim()}` : undefined
 }

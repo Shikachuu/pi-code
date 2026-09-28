@@ -1,7 +1,7 @@
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
+import { type ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-import { run } from '../lib/exec.ts'
+import { run, truncateOutput } from '../lib/exec.ts'
 import { COMMIT_GUIDELINES, renderRules, validateSubject } from './message.ts'
 
 const Params = Type.Object({
@@ -13,7 +13,7 @@ const Params = Type.Object({
 
 const NOTHING_STAGED = 'Nothing is staged. Stage the files you want with git add, then call the commit tool again.'
 
-type Staged = { ok: true; text: string } | { ok: false; error: string }
+type Staged = { ok: true; hasChanges: boolean; text: string } | { ok: false; error: string }
 
 async function readStaged(cwd: string, signal: AbortSignal | undefined): Promise<Staged> {
   const result = await run('git', ['diff', '--cached', '--no-ext-diff'], { cwd, signal })
@@ -21,10 +21,24 @@ async function readStaged(cwd: string, signal: AbortSignal | undefined): Promise
   if (!result.ok) {
     return {
       ok: false,
-      error: `git diff --cached failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
+      error: `git diff --cached failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
     }
   }
-  return { ok: true, text: result.stdout }
+  return { ok: true, hasChanges: result.stdout.trim().length > 0, text: result.stdout }
+}
+
+// Message mode only needs to know whether anything is staged, so list names
+// instead of materialising a potentially large diff.
+async function hasStaged(cwd: string, signal: AbortSignal | undefined): Promise<Staged> {
+  const result = await run('git', ['diff', '--cached', '--name-only', '--no-ext-diff'], { cwd, signal })
+  if (result.missing) return { ok: false, error: `git (not found on PATH): ${result.stderr.trim()}` }
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: `git diff --cached failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
+    }
+  }
+  return { ok: true, hasChanges: result.stdout.trim().length > 0, text: '' }
 }
 
 export default function (pi: ExtensionAPI) {
@@ -40,23 +54,27 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, signal, _onUpdate, ctx) {
       const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }], details: {} })
       const cwd = ctx.cwd
-      const staged = await readStaged(cwd, signal)
-      if (!staged.ok) return text(staged.error)
 
       if (!params.message) {
-        if (!staged.text.trim()) return text(NOTHING_STAGED)
+        const staged = await readStaged(cwd, signal)
+        if (!staged.ok) return text(staged.error)
+        if (!staged.hasChanges) return text(NOTHING_STAGED)
         return text(
-          `Staged diff:\n\n${staged.text.trimEnd()}\n\nCommit message rules:\n${renderRules()}\n\nCall the commit tool again with a message.`,
+          `Staged diff:\n\n${truncateOutput(staged.text.trimEnd())}\n\nCommit message rules:\n${renderRules()}\n\nCall the commit tool again with a message.`,
         )
       }
 
-      if (!staged.text.trim()) return text(NOTHING_STAGED)
+      const staged = await hasStaged(cwd, signal)
+      if (!staged.ok) return text(staged.error)
+      if (!staged.hasChanges) return text(NOTHING_STAGED)
 
       const hints = validateSubject(params.message)
       const result = await run('git', ['commit', '-m', params.message], { cwd, signal })
       if (result.missing) return text(`git (not found on PATH): ${result.stderr.trim()}`)
       if (!result.ok) {
-        return text(`git commit failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`)
+        return text(
+          `git commit failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim(), 20)}`,
+        )
       }
 
       const head = await run('git', ['log', '-1', '--format=%H%n%s'], { cwd, signal })
@@ -87,7 +105,7 @@ export default function (pi: ExtensionAPI) {
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {
         return text(
-          `git push failed with exit code ${push.code}: ${push.stderr.trim() || push.stdout.trim()}\n\nThe commit stays local.`,
+          `git push failed with exit code ${push.code}: ${truncateOutput(push.stderr.trim() || push.stdout.trim(), 20)}\n\nThe commit stays local.`,
         )
       }
       return text(`Committed and pushed ${branch} to ${remote}:\n${summary}${hintText}`)

@@ -1,4 +1,6 @@
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { afterEach, expect, test } from 'vitest'
@@ -124,6 +126,82 @@ test('worktree create runs wt switch -c with --no-cd for a new branch', async ()
   )
   expect(wt.calls().some((call) => call === 'switch -c newbranch --no-cd')).toBe(true)
   expect(resultText(result)).toMatch(/Created branch newbranch/)
+})
+
+test('worktree create reports the created worktree from the follow-up list', async () => {
+  const marker = join(mkdtempSync(join(tmpdir(), 'wt-state-')), 'created')
+  const base = { schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] }
+  const withNew = {
+    schema: 2,
+    items: [...base.items, { branch: 'newbranch', worktree: { path: '/wt/newbranch' } }],
+  }
+  stubOnPath(
+    'wt',
+    [
+      `if [ "$1" = "switch" ]; then touch ${shellQuote(marker)}; exit 0; fi`,
+      `if [ "$1" = "list" ]; then`,
+      `  if [ -f ${shellQuote(marker)} ]; then printf '%s' ${shellQuote(JSON.stringify(withNew))}; else printf '%s' ${shellQuote(JSON.stringify(base))}; fi`,
+      'fi',
+      'exit 0',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'create', branch: 'newbranch' },
+    undefined,
+    undefined,
+    ctx(),
+  )
+  expect(resultText(result)).toBe('Created newbranch /wt/newbranch clean')
+})
+
+test('worktree create surfaces a wt switch failure and skips the follow-up list', async () => {
+  const wt = stubOnPath(
+    'wt',
+    [
+      `if [ "$1" = "list" ]; then printf '%s' ${shellQuote(JSON.stringify({ schema: 2, items: [{ branch: 'main', worktree: { current: true } }] }))}; exit 0; fi`,
+      `if [ "$1" = "switch" ]; then printf '%s\\n' "branch already exists" >&2; exit 2; fi`,
+      'exit 0',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute('id', { operation: 'create', branch: 'x' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/failed with exit code 2/)
+  expect(resultText(result)).toContain('branch already exists')
+  expect(wt.calls().filter((call) => call.startsWith('list'))).toHaveLength(1)
+})
+
+test('worktree switch surfaces a wt switch failure', async () => {
+  const wt = stubOnPath(
+    'wt',
+    `if [ "$1" = "switch" ]; then printf '%s\\n' "no branch named nope" >&2; exit 4; fi\nexit 0`,
+  )
+  const result = await loadTool().execute('id', { operation: 'switch', branch: 'nope' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/failed with exit code 4/)
+  expect(resultText(result)).toContain('no branch named nope')
+  expect(wt.calls().some((call) => call.startsWith('list'))).toBe(false)
+})
+
+test('worktree remove surfaces a wt remove failure', async () => {
+  const wt = stubOnPath(
+    'wt',
+    [
+      `if [ "$1" = "list" ]; then printf '%s' ${shellQuote(JSON.stringify({ schema: 2, items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }] }))}; exit 0; fi`,
+      `if [ "$1" = "remove" ]; then printf '%s\\n' "worktree is dirty" >&2; exit 5; fi`,
+      'exit 0',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute('id', { operation: 'remove', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/failed with exit code 5/)
+  expect(resultText(result)).toContain('worktree is dirty')
+  expect(wt.calls().filter((call) => call.startsWith('remove'))).toHaveLength(1)
+})
+
+test('worktree resolves with error text when the signal is already aborted', async () => {
+  stubList(ENVELOPE)
+  const controller = new AbortController()
+  controller.abort()
+  const result = await loadTool().execute('id', { operation: 'list' }, controller.signal, undefined, ctx())
+  expect(resultText(result)).toMatch(/abort|failed with exit code/)
 })
 
 test('worktree create and switch require a branch and never call wt', async () => {

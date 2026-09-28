@@ -63,7 +63,7 @@ export interface RegisteredTool {
   execute(
     id: string,
     params: unknown,
-    signal: undefined,
+    signal: AbortSignal | undefined,
     onUpdate: undefined,
     ctx: ExtensionContext,
   ): Promise<ToolResult>

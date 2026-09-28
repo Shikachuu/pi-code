@@ -4,6 +4,3 @@ mise.*.local.toml
 mise.local.lock
 .env
 .DS_Store
-
-# Machine-local hook state written by `wt config plugins pi install`.
-hooks/

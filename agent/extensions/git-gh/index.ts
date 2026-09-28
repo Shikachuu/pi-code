@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-import { run, type RunResult } from '../lib/exec.ts'
+import { run, truncateOutput, type RunResult } from '../lib/exec.ts'
 import {
   authArgs,
   buildPrBody,
@@ -93,7 +93,10 @@ export default function (pi: ExtensionAPI) {
           const result = await run('gh', repoViewArgs(), { cwd, signal })
           if (!result.ok) return text(ghFailure('gh repo view', result))
           const repo = parseRepoView(result.stdout)
-          if (!repo) return text(`gh repo view produced output this tool could not parse: ${result.stdout.trim()}`)
+          if (!repo)
+            return text(
+              `gh repo view produced output this tool could not parse: ${truncateOutput(result.stdout.trim(), 20)}`,
+            )
           return text(formatRepoView(repo))
         }
 
@@ -101,7 +104,10 @@ export default function (pi: ExtensionAPI) {
           const result = await run('gh', prViewArgs(params.target), { cwd, signal })
           if (!result.ok) return text(ghFailure('gh pr view', result))
           const pr = parsePrView(result.stdout)
-          if (!pr) return text(`gh pr view produced output this tool could not parse: ${result.stdout.trim()}`)
+          if (!pr)
+            return text(
+              `gh pr view produced output this tool could not parse: ${truncateOutput(result.stdout.trim(), 20)}`,
+            )
           return text(formatPrView(pr))
         }
 
@@ -126,7 +132,7 @@ export default function (pi: ExtensionAPI) {
           if (!log.ok)
             return text(`git log failed with exit code ${log.code}: ${log.stderr.trim() || log.stdout.trim()}`)
           const commits = parseCommits(log.stdout)
-          const title = params.title ?? commits[0]?.subject
+          const title = params.title ?? commits.at(-1)?.subject
           if (!title) return text('pr create needs a title; no local commits ahead of the base were found.')
           const body = params.body ?? buildPrBody(commits)
           const confirmed = await ctx.ui.confirm('Create pull request', `Base: ${base}\nTitle: ${title}\n\n${body}`)

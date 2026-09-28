@@ -373,6 +373,73 @@ test('mutating operations refuse without a UI and never call gh', async () => {
   expect(gh.calls()).toEqual([])
 })
 
+test('pr create refuses without a UI and never calls gh', async () => {
+  const cwd = initRepo()
+  const gh = stubGh('exit 1')
+  const headless = asMock<ExtensionContext>({ cwd, hasUI: false, ui: {} })
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    headless,
+  )
+  expect(resultText(result)).toMatch(/no interactive UI/)
+  expect(gh.calls()).toEqual([])
+})
+
+test('pr create falls back to master when main is absent', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'gh-master-'))
+  git(cwd, ['init', '-b', 'master'])
+  git(cwd, ['config', 'user.email', 't@t.com'])
+  git(cwd, ['config', 'user.name', 't'])
+  git(cwd, ['config', 'commit.gpgsign', 'false'])
+  writeFileSync(join(cwd, 'a.txt'), 'a\n')
+  git(cwd, ['add', 'a.txt'])
+  git(cwd, ['commit', '-m', 'init'])
+  git(cwd, ['checkout', '-b', 'feature'])
+  writeFileSync(join(cwd, 'b.txt'), 'b\n')
+  git(cwd, ['add', 'b.txt'])
+  git(cwd, ['commit', '-m', 'add b'])
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'https://github.com/o/r/pull/1'; exit 0; fi\nexit 1`,
+  )
+  await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(gh.calls().join('\n')).toContain('--base master')
+})
+
+test('pr checks reports a missing gh binary', async () => {
+  restrictPath(emptyPathDir())
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr checks' },
+    undefined,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(result)).toMatch(/gh \(not found on PATH\)/)
+})
+
+test('gh resolves with error text when the signal is already aborted', async () => {
+  stubGh('exit 0')
+  const controller = new AbortController()
+  controller.abort()
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr view' },
+    controller.signal,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(result)).toMatch(/abort|failed with exit code/)
+})
+
 test('parseCommits and buildPrBody keep subjects, bodies and a commit list', () => {
   const raw = `add b\n\nwhy b\x1eadd a\x1e`
   const commits = parseCommits(raw)
