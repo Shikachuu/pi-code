@@ -157,7 +157,7 @@ export function draftArgs(input: {
   feedback?: string
 }) {
   return {
-    label: input.draft ? 'revise spec' : 'draft spec',
+    label: input.draft && input.feedback ? 'revise spec' : 'draft spec',
     tier: 'small',
     prompt: renderTemplate(templatePath(TEMPLATES, 'draft-prompt'), {
       request: input.request,

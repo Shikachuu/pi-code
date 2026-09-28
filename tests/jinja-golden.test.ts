@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { assert, expect, test } from 'vitest'
+import { assert, expect, test, afterAll } from 'vitest'
 
 import {
   PLAN_TEMPLATE,
@@ -13,7 +13,7 @@ import {
 import { MAX_PROBES, draftArgs, discoveryArgs, enrichArgs, researchArgs } from '../agent/extensions/sdd/workflows.ts'
 import { renderSummary } from '../agent/extensions/verification/report.ts'
 import type { Scope } from '../agent/extensions/verification/scope.ts'
-import { expectGolden } from './golden.ts'
+import { expectGolden, assertedGoldens } from './golden.ts'
 import { reports } from './helpers.ts'
 
 const SPEC = '# Phone\n\n## Goal\nAdd a phone field.\n'
@@ -50,7 +50,7 @@ const COVERED: Record<string, string[]> = {
   'enrich-scope': ['enrich-scope', 'enrich-scope-empty'],
   'enrich-repo': ['enrich-repo'],
   'enrich-questions': ['enrich-questions', 'enrich-questions-empty'],
-  'draft-prompt': ['draft-prompt', 'draft-revise'],
+  'draft-prompt': ['draft-prompt', 'draft-revise', 'draft-no-feedback'],
   'discovery-plan': ['discovery-plan', 'discovery-plan-empty'],
   'discovery-probe': ['discovery-probe'],
   'discovery-synth': ['discovery-synth', 'discovery-synth-existing'],
@@ -153,7 +153,7 @@ test('draft prompts match the pre-port goldens for the compose and revise branch
   )
 })
 
-test('draftArgs revises when a draft is present even without feedback', () => {
+test('draftArgs composes when a draft has no feedback, and the label agrees', () => {
   const args = draftArgs({
     request: 'add phone',
     enrichment: ENRICHMENT,
@@ -162,10 +162,10 @@ test('draftArgs revises when a draft is present even without feedback', () => {
     draft: '# D',
     feedback: '',
   })
-  expect(args.label).toBe('revise spec')
-  expect(args.prompt).toContain('Revise this spec draft')
-  expect(args.prompt).toContain('<draft>\n# D\n</draft>')
-  expect(args.prompt).not.toContain('Compose a feature spec')
+  expect(args.label).toBe('draft spec')
+  expectGolden('draft-no-feedback', args.prompt)
+  expect(args.prompt).toContain('Compose a feature spec')
+  expect(args.prompt).not.toContain('<draft>')
 })
 
 test('draftArgs renders a whitespace-only feedback block in the revise branch', () => {
@@ -242,6 +242,18 @@ test('planPrompt keeps a research block whose content is empty', () => {
   expect(prompt).toContain('<research path="r1.md">\n\n</research>')
 })
 
+test('planPrompt keeps research content and paths as given', () => {
+  const prompt = planPrompt({
+    slug: 's',
+    dir: 'd',
+    spec: SPEC,
+    discovery: undefined,
+    research: [{ path: 'a"b.md', content: 'x\n' }],
+    memory: '',
+  })
+  expect(prompt).toContain('<research path="a"b.md">\nx\n\n</research>')
+})
+
 test('planPrompt substitutes user content containing template delimiters verbatim', () => {
   const dirty = 'text {{ oops }} {% raw %} & <tag> "quote"'
   const prompt = planPrompt({
@@ -282,9 +294,13 @@ test('every tracked template has a golden fixture and every fixture is asserted'
     for (const fixture of goldens) assert.isTrue(fixtures.has(fixture), `${name} -> ${fixture}`)
   }
   for (const fixture of fixtures) assert.isTrue(referenced.has(fixture), `orphan fixture ${fixture}`)
-  const source = readFileSync(join(import.meta.dirname, 'jinja-golden.test.ts'), 'utf8')
-  const asserted = new Set([...source.matchAll(/expectGolden\(\s*'([^']+)'/g)].map((match) => match[1]))
-  for (const fixture of referenced) assert.isTrue(asserted.has(fixture), `golden not asserted: ${fixture}`)
+})
+
+afterAll(() => {
+  const asserted = assertedGoldens()
+  for (const fixture of new Set(Object.values(COVERED).flat())) {
+    assert.isTrue(asserted.has(fixture), `golden not asserted: ${fixture}`)
+  }
 })
 
 test('tracked .jinja templates use LF line endings', () => {

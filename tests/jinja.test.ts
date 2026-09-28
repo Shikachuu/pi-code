@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { expect, test } from 'vitest'
+import { assert, expect, test } from 'vitest'
 
 import { renderTemplate, templatePath } from '../agent/extensions/lib/jinja.ts'
 
@@ -62,6 +62,40 @@ test('renderTemplate renders an unknown variable as empty rather than throwing',
   const path = templatePath(dir, 'missing-var')
   writeFileSync(path, 'a{{ missing }}b')
   expect(renderTemplate(path)).toBe('ab')
+})
+
+test('renderTemplate renders a variable-free template without a context argument', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
+  const path = templatePath(dir, 'static')
+  writeFileSync(path, 'plain text')
+  expect(renderTemplate(path)).toBe('plain text')
+})
+
+test('renderTemplate strips the trailing newline a loop body leaves', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
+  const path = templatePath(dir, 'loop')
+  writeFileSync(path, '{% for x in xs %}\n- {{ x }}\n{% endfor %}\n')
+  expect(renderTemplate(path, { xs: ['a', 'b'] })).toBe('- a\n- b')
+})
+
+test('renderTemplate preserves the original error as cause on every failure path', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
+  const cases: [string, string, Record<string, unknown>][] = [
+    ['absent', '', {}],
+    ['broken', '{% if %}', {}],
+    ['bad-filter', '{{ v | nosuchfilter }}', { v: 'x' }],
+  ]
+  for (const [name, source, context] of cases) {
+    const path = templatePath(dir, name)
+    if (source) writeFileSync(path, source)
+    let caught: unknown
+    try {
+      renderTemplate(path, context)
+    } catch (error) {
+      caught = error
+    }
+    assert.instanceOf((caught as Error).cause, Error, name)
+  }
 })
 
 test('renderTemplate keys the cache by full path, not basename', () => {
