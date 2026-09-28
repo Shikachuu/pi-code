@@ -9,6 +9,15 @@ export function templatePath(dir: string, name: string): string {
   return join(dir, `${name}.jinja`)
 }
 
+function stripTrailingNewline(text: string): string {
+  return text.endsWith('\n') ? text.slice(0, -1) : text
+}
+
+/**
+ * Renders a tracked template file. The result never ends in a newline, matching
+ * the pre-port renderers. @huggingface/jinja only strips a trailing newline from
+ * the template source, so loop bodies and substituted values can still leave one.
+ */
 export function renderTemplate(path: string, context: Record<string, unknown> = {}): string {
   let template = cache.get(path)
   if (!template) {
@@ -20,10 +29,9 @@ export function renderTemplate(path: string, context: Record<string, unknown> = 
     }
     cache.set(path, template)
   }
-  const rendered = template.render(context)
-  // @huggingface/jinja strips one trailing newline from the source before
-  // parsing, so a template ending in a loop or variable still renders one. The
-  // strip below normalizes that; no template may rely on the output ending in a
-  // newline.
-  return rendered.endsWith('\n') ? rendered.slice(0, -1) : rendered
+  try {
+    return stripTrailingNewline(template.render(context))
+  } catch (error) {
+    throw new Error(`cannot render template ${path}: ${(error as Error).message}`)
+  }
 }

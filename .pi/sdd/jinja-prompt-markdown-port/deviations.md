@@ -7,10 +7,10 @@ goldens in `tests/fixtures/sdd-golden/` were captured from the hand-rolled code
 before the port, and `tests/jinja-golden.test.ts` asserts equality.
 
 The only rendering-mechanism change is in `agent/extensions/lib/jinja.ts`: the
-library strips a trailing newline from the template source before parsing, so a
-template ending in a loop or variable still renders one. The loader strips that
-one trailing newline from the output, so the rendered text keeps the pre-port
-no-trailing-newline shape. Without it every list-ended report gained a newline.
+library strips a trailing newline from the template source before parsing, but
+loop bodies and substituted values can still leave one in the output. The loaded
+strips that newline so rendered text keeps the pre-port no-trailing-newline
+shape. Without it every list-ended report gained a newline.
 
 ## Documented behaviour changes
 

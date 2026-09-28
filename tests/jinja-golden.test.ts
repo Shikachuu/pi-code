@@ -7,7 +7,7 @@ import {
   planPrompt,
   renderResearch,
 } from '../agent/extensions/sdd/prompts.ts'
-import { draftArgs, discoveryArgs, enrichArgs, researchArgs } from '../agent/extensions/sdd/workflows.ts'
+import { MAX_PROBES, draftArgs, discoveryArgs, enrichArgs, researchArgs } from '../agent/extensions/sdd/workflows.ts'
 import { type Reports, renderSummary } from '../agent/extensions/verification/report.ts'
 import type { Scope } from '../agent/extensions/verification/scope.ts'
 import { golden } from './golden.ts'
@@ -163,6 +163,57 @@ test('research prompts match the pre-port goldens', () => {
 test('renderSummary matches the pre-port goldens with and without a missing agent', () => {
   expect(renderSummary(SCOPE, reports())).toBe(golden('verification-summary'))
   expect(renderSummary(SCOPE, reports({ commentAuditor: null }))).toBe(golden('verification-summary-missing'))
+})
+
+test('sdd prompt builders carry their inputs independently of the goldens', () => {
+  const enrichment = {
+    scope: { goal: 'add phone', inScope: ['users'], nonGoals: [], assumptions: [] },
+    repo: { stack: 'ts', areas: [{ path: 'a.ts', why: 'user model' }], patterns: [] },
+    questions: { questions: [] },
+  }
+  const enrich = enrichArgs('add a phone field', MEMORY)
+  expect(enrich.scope.prompt).toContain('add a phone field')
+  expect(enrich.scope.prompt).toContain(MEMORY)
+  expect(enrich.repo.prompt).not.toContain(MEMORY)
+
+  expect(draftArgs({ request: 'add phone', enrichment, answers: '', memory: '' }).prompt).not.toContain(
+    '<user-answers>',
+  )
+  expect(draftArgs({ request: 'add phone', enrichment, answers: 'E.164', memory: '' }).prompt).toContain(
+    '<user-answers>\nE.164\n</user-answers>',
+  )
+
+  expect(discoveryArgs(SPEC, undefined, '').plan.prompt).toContain(`Propose up to ${MAX_PROBES} independent probes`)
+  expect(discoveryArgs(SPEC, undefined, '').synth.prompt).not.toContain('<existing-discovery>')
+  expect(discoveryArgs(SPEC, DISCOVERY, '').synth.prompt).toContain('<existing-discovery>')
+
+  expect(researchArgs('topic', SPEC, undefined).queries.prompt).not.toContain('<discovery>')
+  expect(researchArgs('topic', SPEC, DISCOVERY).queries.prompt).toContain('<discovery>')
+})
+
+test('planPrompt substitutes user content containing template delimiters verbatim', () => {
+  const dirty = 'text {{ oops }} {% raw %} & <tag> "quote"'
+  const prompt = planPrompt({
+    slug: 'dirty',
+    dir: '.pi/sdd/dirty',
+    spec: dirty,
+    discovery: dirty,
+    research: [{ path: 'research-1.md', content: dirty }],
+    memory: dirty,
+  })
+  expect(prompt).toContain(dirty)
+})
+
+test('renderResearch renders a finding with no sources as claim ()', () => {
+  const md = renderResearch({
+    question: 'Q',
+    summary: 'S',
+    findings: [{ claim: 'No sources', sources: [] }],
+    implications: [],
+    recommendation: 'R',
+    openQuestions: [],
+  })
+  expect(md).toContain('- No sources ()')
 })
 
 test('rendered prompts contain no unrendered template syntax', () => {

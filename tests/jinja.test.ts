@@ -20,6 +20,14 @@ test('renderTemplate throws with the path and the parse reason when the template
   expect(() => renderTemplate(path)).toThrow(/broken\.jinja/)
 })
 
+test('renderTemplate throws with the path when rendering fails', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
+  const path = templatePath(dir, 'bad-filter')
+  writeFileSync(path, '{{ value | nosuchfilter }}')
+  expect(() => renderTemplate(path, { value: 'x' })).toThrow(/cannot render template/)
+  expect(() => renderTemplate(path, { value: 'x' })).toThrow(/bad-filter\.jinja/)
+})
+
 test('renderTemplate parses a template once and ignores later edits to the file', () => {
   const dir = mkdtempSync(join(tmpdir(), 'jinja-'))
   const path = templatePath(dir, 'cached')
@@ -28,7 +36,6 @@ test('renderTemplate parses a template once and ignores later edits to the file'
 
   writeFileSync(path, 'second {{ v }}')
   expect(readFileSync(path, 'utf8')).toBe('second {{ v }}')
-  // A cache miss would re-read the new source and return "second 2".
   expect(renderTemplate(path, { v: '2' })).toBe('first 2')
 })
 

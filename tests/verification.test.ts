@@ -351,6 +351,15 @@ test('renderSummary reports a missing agent by name', () => {
   expect(md).toMatch(/comment-auditor did not return a report/)
 })
 
+test('renderSummary handles all three reports missing', () => {
+  const md = renderSummary(baseScope(), { codeReviewer: null, testEngineer: null, commentAuditor: null })
+  expect(md).toMatch(/\*\*Verdict:\*\* REQUEST CHANGES/)
+  expect(md).toContain('No reports were returned.')
+  expect(md).toMatch(/code-reviewer did not return a report/)
+  expect(md).toMatch(/test-engineer did not return a report/)
+  expect(md).toMatch(/comment-auditor did not return a report/)
+})
+
 test('renderSummary reports missing test-engineer and code-reviewer under both their headings', () => {
   const noEngineer = renderSummary(baseScope(), reports({ testEngineer: null }))
   expect(noEngineer).toMatch(/### Coverage Gaps \(from test-engineer\)\ntest-engineer did not return a report/)
