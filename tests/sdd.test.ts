@@ -7,7 +7,7 @@ import { stripVTControlCharacters as stripAnsi } from 'node:util'
 import type { ExtensionAPI, ExtensionContext, Theme } from '@earendil-works/pi-coding-agent'
 import type { TUI } from '@earendil-works/pi-tui'
 import type { WorkflowRunOptions, WorkflowRunResult } from '@quintinshaw/pi-dynamic-workflows'
-import { parseWorkflowScript, runWorkflow } from '@quintinshaw/pi-dynamic-workflows'
+import { parseWorkflowScript, runWorkflow, WorkflowErrorCode } from '@quintinshaw/pi-dynamic-workflows'
 import { expect, test, vi } from 'vitest'
 
 import register from '../agent/extensions/sdd/index.ts'
@@ -1017,6 +1017,150 @@ test('runSdd stops on Escape, rejects empty results and clears its widget', asyn
       { label: 'empty', maxAgents: 1, run: async () => asMock<WorkflowRunResult<unknown>>({ result: null }) },
     ),
   ).rejects.toThrow(/empty returned no result/)
+})
+
+function runCtx(ui: Record<string, unknown> = {}): ExtensionContext {
+  return asMock<ExtensionContext>({
+    cwd: tmp(),
+    mode: 'rpc',
+    hasUI: true,
+    model: { provider: 'p', id: 'm' },
+    ui: { setWidget: () => {}, ...ui },
+  })
+}
+
+test('runSdd explains a swallowed agent failure instead of "returned no result"', async () => {
+  const { runSdd } = await import('../agent/extensions/sdd/runner.ts')
+  await expect(
+    runSdd(
+      runCtx(),
+      's',
+      {},
+      {
+        label: 'spec: draft',
+        maxAgents: 1,
+        run: async (_s, options) => {
+          options.onAgentEnd?.({
+            id: '1',
+            label: 'spec: draft',
+            result: null,
+            error: 'No API key found for anthropic.',
+            errorCode: WorkflowErrorCode.AGENT_EXECUTION_ERROR,
+          })
+          return asMock<WorkflowRunResult<unknown>>({ result: null })
+        },
+      },
+    ),
+  ).rejects.toThrow(/spec: draft: agent "spec: draft" failed \(AGENT_EXECUTION_ERROR\): No API key found for anthropic/)
+})
+
+test('runSdd reports every failed agent, not just the last', async () => {
+  const { runSdd } = await import('../agent/extensions/sdd/runner.ts')
+  await expect(
+    runSdd(
+      runCtx(),
+      's',
+      {},
+      {
+        label: 'verify',
+        maxAgents: 3,
+        run: async (_s, options) => {
+          options.onAgentEnd?.({
+            id: 'a',
+            label: 'code-reviewer',
+            result: null,
+            error: 'reviewer blew up',
+            errorCode: WorkflowErrorCode.AGENT_EXECUTION_ERROR,
+          })
+          options.onAgentEnd?.({
+            id: 'b',
+            label: 'test-engineer',
+            result: null,
+            error: 'timed out',
+            errorCode: WorkflowErrorCode.AGENT_TIMEOUT,
+          })
+          return asMock<WorkflowRunResult<unknown>>({ result: null })
+        },
+      },
+    ),
+  ).rejects.toThrow(
+    /verify: 2 agents failed - "code-reviewer" \(AGENT_EXECUTION_ERROR\): reviewer blew up; "test-engineer" \(AGENT_TIMEOUT\): timed out/,
+  )
+})
+
+test('runSdd omits the code group when an agent error carries none', async () => {
+  const { runSdd } = await import('../agent/extensions/sdd/runner.ts')
+  await expect(
+    runSdd(
+      runCtx(),
+      's',
+      {},
+      {
+        label: 'spec: draft',
+        maxAgents: 1,
+        run: async (_s, options) => {
+          options.onAgentEnd?.({ id: '1', label: 'writer', result: null, error: 'boom' })
+          return asMock<WorkflowRunResult<unknown>>({ result: null })
+        },
+      },
+    ),
+  ).rejects.toThrow(/^spec: draft: agent "writer" failed: boom$/)
+})
+
+test('runSdd keeps the progress widget live and clears it on a failure', async () => {
+  const { runSdd } = await import('../agent/extensions/sdd/runner.ts')
+  const widgets: unknown[] = []
+  await expect(
+    runSdd(
+      runCtx({ setWidget: (_k: string, v: unknown) => widgets.push(v) }),
+      's',
+      {},
+      {
+        label: 'verify',
+        maxAgents: 3,
+        run: async (_s, options) => {
+          options.onAgentStart?.({ id: 'a', label: 'planner', prompt: '' })
+          options.onAgentEnd?.({ id: 'a', label: 'planner', result: {} })
+          options.onAgentStart?.({ id: 'b', label: 'writer', prompt: '' })
+          options.onAgentEnd?.({
+            id: 'b',
+            label: 'writer',
+            result: null,
+            error: 'boom',
+            errorCode: WorkflowErrorCode.AGENT_EXECUTION_ERROR,
+            tokens: 2000,
+          })
+          return asMock<WorkflowRunResult<unknown>>({ result: null })
+        },
+      },
+    ),
+  ).rejects.toThrow(/verify: agent "writer" failed/)
+  expect(widgets.at(-1), 'widget cleared on the failure path').toBeUndefined()
+  const rendered = asMock<string[]>(widgets.at(-2)).join('\n')
+  expect(rendered).toContain('✓ planner')
+  expect(rendered).toContain('✗ writer')
+  expect(rendered).toContain('1 done')
+  expect(rendered).toContain('1 failed')
+  expect(rendered).toContain('0 running')
+  expect(rendered).toContain('2k tokens')
+})
+
+test('runSdd returns a result even when a sub-agent failed', async () => {
+  const { runSdd } = await import('../agent/extensions/sdd/runner.ts')
+  const result = await runSdd<{ markdown: string }>(
+    runCtx(),
+    's',
+    {},
+    {
+      label: 'spec: draft',
+      maxAgents: 1,
+      run: async (_s, options) => {
+        options.onAgentEnd?.({ id: '1', label: 'writer', result: null, error: 'boom' })
+        return asMock<WorkflowRunResult<unknown>>({ result: { markdown: '# hi' } })
+      },
+    },
+  )
+  expect(result).toEqual({ markdown: '# hi' })
 })
 
 test('plan sections ignore headings inside code fences', () => {

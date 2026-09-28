@@ -4,6 +4,7 @@ import {
   type AgentDefinition,
   loadAgentRegistry,
   runWorkflow,
+  type WorkflowErrorCode,
   type WorkflowRunOptions,
   type WorkflowRunResult,
 } from '@quintinshaw/pi-dynamic-workflows'
@@ -21,6 +22,26 @@ export const SCOUT: AgentDefinition = {
 }
 
 export type WorkflowRunner = (script: string, options: WorkflowRunOptions) => Promise<WorkflowRunResult<unknown>>
+
+type AgentEnd = Parameters<NonNullable<WorkflowRunOptions['onAgentEnd']>>[0]
+
+interface AgentFailure {
+  label: string
+  message: string
+  code?: WorkflowErrorCode
+}
+
+function describeFailure(failure: AgentFailure): string {
+  return `agent "${failure.label}" failed${failure.code ? ` (${failure.code})` : ''}: ${failure.message}`
+}
+
+function describeFailures(failures: AgentFailure[]): string {
+  if (failures.length === 1) return describeFailure(failures[0]!)
+  const described = failures.map(
+    (failure) => `"${failure.label}"${failure.code ? ` (${failure.code})` : ''}: ${failure.message}`,
+  )
+  return `${failures.length} agents failed - ${described.join('; ')}`
+}
 
 export interface RunSddOptions {
   label: string
@@ -41,6 +62,10 @@ export async function runSdd<T>(ctx: ExtensionContext, script: string, args: unk
         })
       : undefined
   const view = progressWidget(ctx, opts.label)
+  // A recoverable agent failure is swallowed by the workflow library into a null
+  // result. Keep every reported error, keyed by the library's per-call id, so the
+  // null can explain itself instead of surfacing as an opaque "returned no result".
+  const failures = new Map<string, AgentFailure>()
   try {
     const result = await (opts.run ?? runWorkflow)(script, {
       args,
@@ -54,9 +79,21 @@ export async function runSdd<T>(ctx: ExtensionContext, script: string, args: unk
       signal: abort.signal,
       persistLogs: false,
       ...view.options,
+      onAgentEnd: (event: AgentEnd) => {
+        if (event.errorCode != null || event.error != null)
+          failures.set(event.id, {
+            label: event.label,
+            message: event.error ?? event.errorCode ?? 'agent failed',
+            ...(event.errorCode ? { code: event.errorCode } : {}),
+          })
+        view.options.onAgentEnd?.(event)
+      },
     })
     if (abort.signal.aborted) throw new Error(`${opts.label} was stopped`)
-    if (result.result == null) throw new Error(`${opts.label} returned no result`)
+    if (result.result == null) {
+      if (failures.size) throw new Error(`${opts.label}: ${describeFailures([...failures.values()])}`)
+      throw new Error(`${opts.label} returned no result`)
+    }
     return result.result as T
   } finally {
     stopOnEscape?.()
