@@ -74,6 +74,7 @@ export default function (pi: ExtensionAPI) {
       'Use the worktree tool for every worktree operation; never call raw `git worktree`, because wt owns worktree layout and hooks.',
       'worktree create and switch do not change the agent working directory; pass the reported path as cwd when you need to run commands in that worktree.',
       'worktree remove refuses a dirty worktree unless force is true, and wt deletes the branch unless keepBranch is true.',
+      'worktree remove never removes the worktree this session is running in; run `wt remove` from another directory.',
     ],
     parameters: Params,
 
@@ -145,9 +146,9 @@ export default function (pi: ExtensionAPI) {
           const resolvedCwd = realPath(cwd)
           const ownsCwd =
             target !== undefined && (resolvedTarget === resolvedCwd || resolvedCwd.startsWith(`${resolvedTarget}/`))
-          if (ownsCwd && !params.force) {
+          if (ownsCwd) {
             return text(
-              `Refusing to remove ${target.path}: it is the worktree this session is running in. Pass force true to override.`,
+              `Refusing to remove ${target.path}: it is the worktree this session is running in. Run \`wt remove\` from outside it.`,
             )
           }
           if (!ctx.hasUI) {

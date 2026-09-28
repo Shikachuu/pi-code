@@ -223,7 +223,19 @@ test('an approved pr update passes the fields to gh pr edit', async () => {
     ctx(process.cwd(), true),
   )
   expect(resultText(result)).toContain('https://github.com/o/r/pull/12')
-  expect(gh.calls().join('\n')).toContain('pr edit 12 --title New title --body New body')
+  expect(gh.callArgs()).toContainEqual(['pr', 'edit', '12', '--title', 'New title', '--body', 'New body'])
+})
+
+test('a silent successful pr update reports the placeholder', async () => {
+  stubGh('if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then exit 0; fi\nexit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', target: '12', title: 'x' },
+    undefined,
+    undefined,
+    ctx(process.cwd(), true),
+  )
+  expect(resultText(result)).toBe('Pull request updated.')
 })
 
 test('a failing pr edit surfaces the command stderr', async () => {
@@ -263,6 +275,16 @@ test('pr create derives the title and body from local commits', async () => {
   expect(log).toContain('--title add b')
   expect(log).toContain('## Summary')
   expect(log).toContain('## Commits')
+  expect(gh.callArgs()).toContainEqual([
+    'pr',
+    'create',
+    '--title',
+    'add b',
+    '--body',
+    expect.any(String),
+    '--base',
+    'main',
+  ])
 })
 
 test('pr create needs a base branch when neither main nor master exists', async () => {
@@ -619,6 +641,30 @@ test('git log output round-trips through gitLogArgs and parseCommits', () => {
   expect(commits).toHaveLength(2)
 })
 
+test('formatPrView, summarizeChecks and formatRepoView cover their fallbacks', () => {
+  expect(formatPrView(must(parsePrView('{}'), 'pr'))).toBe('#? (untitled)')
+  expect(formatPrView(must(parsePrView(JSON.stringify({ headRefName: 'x' })), 'pr'))).toContain('x -> ?')
+  const checks = must(parseChecks(JSON.stringify([{}])), 'checks')
+  expect(summarizeChecks(checks)).toContain('unknown (unnamed)')
+  const repo = must(
+    parseRepoView(
+      JSON.stringify({ nameWithOwner: 'o/r', isFork: true, viewerPermission: 'MAINTAIN', stargazerCount: 42 }),
+    ),
+    'repo',
+  )
+  const rendered = formatRepoView(repo)
+  expect(rendered).toContain('fork')
+  expect(rendered).toContain('permission: MAINTAIN')
+  expect(rendered).toContain('42 stars')
+})
+
+test('parsePrView and parseAuthHosts reject malformed shapes', () => {
+  expect(parsePrView('"x"')).toBeUndefined()
+  expect(parsePrView(JSON.stringify({ author: 'octocat' }))?.author).toBe('octocat')
+  expect(parseAuthHosts(JSON.stringify({ hosts: { 'github.com': 'nope' } }))).toEqual([])
+  expect(parseAuthHosts(JSON.stringify({ hosts: { 'github.com': [{}] } }))).toEqual(['github.com: (unknown) unknown'])
+})
+
 test('arg builders pin the exact JSON field lists', () => {
   expect(authArgs(true)).toEqual(['auth', 'status', '--json', 'hosts'])
   expect(prViewArgs('12')).toEqual(['pr', 'view', '12', '--json', PR_VIEW_FIELDS.join(',')])
@@ -635,6 +681,7 @@ test('arg builders pin the exact JSON field lists', () => {
     'main',
   ])
   expect(prEditArgs('12', { title: 't' })).toEqual(['pr', 'edit', '12', '--title', 't'])
+  expect(prEditArgs(undefined, { body: 'b' })).toEqual(['pr', 'edit', '--body', 'b'])
   expect(gitLogArgs('main')).toContain('main..HEAD')
   expect(gitLogArgs('main')).toContain('-n')
 })

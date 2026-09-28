@@ -37,7 +37,7 @@ function stubGit() {
   const stub = stubOnPath('git', `exec ${shellQuote(realGit)} "$@"`)
   return {
     ...stub,
-    pushes: () => stub.calls().filter((call) => call.startsWith('push')),
+    pushes: () => stub.callArgs().filter((args) => args[0] === 'push'),
   }
 }
 
@@ -60,6 +60,14 @@ function repoWithRemote(): string {
   git(cwd, ['remote', 'add', 'origin', remote])
   git(cwd, ['push', '-u', 'origin', 'main'])
   git(cwd, ['checkout', '-b', 'feature'])
+  return cwd
+}
+
+function repoWithMismatchedUpstream(): string {
+  const cwd = repoWithRemote()
+  git(cwd, ['push', 'origin', 'feature'])
+  git(cwd, ['checkout', '-b', 'wip'])
+  git(cwd, ['branch', '--set-upstream-to=origin/feature', 'wip'])
   return cwd
 }
 
@@ -179,7 +187,7 @@ test('a confirmed push sends the commit to the remote', async () => {
     ctx(cwd, true),
   )
   expect(resultText(result)).toMatch(/Committed and pushed/)
-  expect(stub.pushes()).toEqual(['push --set-upstream origin feature'])
+  expect(stub.pushes()).toEqual([['push', '--set-upstream', 'origin', 'feature']])
   expect(git(cwd, ['config', 'branch.feature.remote'])).toBe('origin')
   expect(git(cwd, ['rev-list', '--count', 'origin/feature..HEAD'])).toBe('0')
 })
@@ -193,9 +201,47 @@ test('push targets the branch upstream remote rather than the first remote', asy
   stage(cwd, 'b.txt', 'b\n')
   const stub = stubGit()
   await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, ctx(cwd, true))
-  expect(stub.pushes()).toEqual(['push'])
+  expect(stub.pushes()).toEqual([['push', 'upstream', 'HEAD:feature']])
   expect(git(cwd, ['rev-list', '--count', 'upstream/feature..HEAD'])).toBe('0')
   expect(() => git(cwd, ['rev-parse', '--verify', 'origin/feature'])).toThrow(/revision/i)
+})
+
+test('push follows the upstream ref when the local branch name differs', async () => {
+  const cwd = repoWithMismatchedUpstream()
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  let confirmMessage = ''
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd,
+    hasUI: true,
+    ui: {
+      confirm: async (_title: string, message: string) => {
+        confirmMessage = message
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    capturingCtx,
+  )
+  expect(confirmMessage).toContain('origin/feature')
+  expect(stub.pushes()).toEqual([['push', 'origin', 'HEAD:feature']])
+  expect(resultText(result)).toMatch(/Committed and pushed wip to origin/)
+  expect(() => git(cwd, ['rev-parse', '--verify', 'origin/wip'])).toThrow(/revision/i)
+})
+
+test('headless push guidance follows the upstream ref', async () => {
+  const cwd = repoWithMismatchedUpstream()
+  stage(cwd, 'b.txt', 'b\n')
+  const headless = asMock<ExtensionContext>({ cwd, hasUI: false, ui: {} })
+  const result = await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, headless)
+  expect(resultText(result)).toContain('run `git push`')
+  expect(resultText(result)).not.toContain('git push origin wip')
 })
 
 test('a headless push confirmation returns guidance and does not push', async () => {

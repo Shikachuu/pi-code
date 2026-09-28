@@ -79,7 +79,11 @@ export default function (pi: ExtensionAPI) {
         signal,
       })
       const hasUpstream = upstreamResult.ok && upstreamResult.stdout.trim().includes('/')
-      let remote = hasUpstream ? (upstreamResult.stdout.trim().split('/')[0] ?? '') : ''
+      const upstreamFull = hasUpstream ? upstreamResult.stdout.trim() : ''
+      const upstreamSlash = upstreamFull.indexOf('/')
+      const upstreamRemote = hasUpstream ? upstreamFull.slice(0, upstreamSlash) : ''
+      const upstreamRef = hasUpstream ? upstreamFull.slice(upstreamSlash + 1) : ''
+      let remote = upstreamRemote
       if (!remote) {
         const remoteResult = await run('git', ['remote'], { cwd, signal })
         remote = remoteResult.ok ? (remoteResult.stdout.split('\n').find((line) => line.trim()) ?? '').trim() : ''
@@ -87,16 +91,20 @@ export default function (pi: ExtensionAPI) {
       if (!remote) {
         return text(`Committed:\n${summary}${hintText}\n\nNo git remote is configured, so nothing was pushed.`)
       }
+      const destination = hasUpstream ? `${remote}/${upstreamRef}` : `${remote}/${branch}`
       if (!ctx.hasUI) {
+        const command = hasUpstream ? 'git push' : `git push ${remote} ${branch}`
         return text(
-          `Committed:\n${summary}${hintText}\n\nThe commit is local. Ask the user to run \`git push ${remote} ${branch}\`; this tool only pushes after an interactive confirmation.`,
+          `Committed:\n${summary}${hintText}\n\nThe commit is local. Ask the user to run \`${command}\`; this tool only pushes after an interactive confirmation.`,
         )
       }
-      const confirmed = await ctx.ui.confirm('Push commit', `Push ${branch} to ${remote}?`)
+      const confirmed = await ctx.ui.confirm('Push commit', `Push HEAD to ${destination}?`)
       if (!confirmed) {
         return text(`Committed:\n${summary}${hintText}\n\nPush declined; the commit stays local.`)
       }
-      const pushArgs = hasUpstream ? ['push'] : ['push', '--set-upstream', remote, branch]
+      const pushArgs = hasUpstream
+        ? ['push', remote, `HEAD:${upstreamRef}`]
+        : ['push', '--set-upstream', remote, branch]
       const push = await run('git', pushArgs, { cwd, signal })
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {

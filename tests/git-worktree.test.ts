@@ -125,6 +125,7 @@ test('worktree create runs wt switch -c with --no-cd for a new branch', async ()
     ctx(),
   )
   expect(wt.calls().some((call) => call === 'switch -c newbranch --no-cd')).toBe(true)
+  expect(wt.callArgs()).toContainEqual(['switch', '-c', 'newbranch', '--no-cd'])
   expect(resultText(result)).toMatch(/Created branch newbranch/)
 })
 
@@ -201,7 +202,7 @@ test('worktree resolves with error text when the signal is already aborted', asy
   const controller = new AbortController()
   controller.abort()
   const result = await loadTool().execute('id', { operation: 'list' }, controller.signal, undefined, ctx())
-  expect(resultText(result)).toMatch(/abort|failed with exit code/)
+  expect(resultText(result)).toMatch(/aborted/i)
 })
 
 test('worktree create and switch require a branch and never call wt', async () => {
@@ -219,11 +220,14 @@ test('worktree remove maps force and keepBranch to wt flags and runs in the fore
     items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true, changes: DIRTY_CHANGES } }],
   })
   await loadTool().execute('id', { operation: 'remove', force: true }, undefined, undefined, ctx())
-  expect(wt.calls().some((call) => call === 'remove feature -f --foreground')).toBe(true)
+  expect(wt.callArgs()).toContainEqual(['remove', 'feature', '-f', '--foreground'])
 
-  const wt2 = stubList({ schema: 2, items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }] })
-  await loadTool().execute('id', { operation: 'remove', keepBranch: true }, undefined, undefined, ctx())
-  expect(wt2.calls().some((call) => call === 'remove feature --no-delete-branch --foreground')).toBe(true)
+  const wt2 = stubList({
+    schema: 2,
+    items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true, changes: DIRTY_CHANGES } }],
+  })
+  await loadTool().execute('id', { operation: 'remove', force: true, keepBranch: true }, undefined, undefined, ctx())
+  expect(wt2.callArgs()).toContainEqual(['remove', 'feature', '-f', '--no-delete-branch', '--foreground'])
 })
 
 test('worktree remove reports the removed worktree when the follow-up list drops it', async () => {
@@ -274,12 +278,12 @@ test('a declined worktree remove never runs wt remove', async () => {
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
 
-test('worktree refuses to remove the worktree it is running in unless forced', async () => {
+test('worktree refuses to remove the worktree it is running in even when forced', async () => {
   const wt = stubList({
     schema: 2,
     items: [{ branch: 'feature', worktree: { path: tmpdir(), current: true } }],
   })
-  const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, ctx())
+  const result = await loadTool().execute('id', { operation: 'remove', force: true }, undefined, undefined, ctx())
   expect(resultText(result)).toMatch(/Refusing to remove/)
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
@@ -327,6 +331,7 @@ test('worktree switch uses --no-cd so the agent never changes directory', async 
   const wt = stubList(ENVELOPE)
   await loadTool().execute('id', { operation: 'switch', branch: 'feature' }, undefined, undefined, ctx())
   expect(wt.calls().some((call) => call === 'switch feature --no-cd')).toBe(true)
+  expect(wt.callArgs()).toContainEqual(['switch', 'feature', '--no-cd'])
 })
 
 test('worktree surfaces the command stderr verbatim', async () => {
@@ -416,7 +421,7 @@ test('isDirty and describeChanges handle zero and diff-only changes', () => {
   expect(describeChanges({ ...flagsOff, diff: { added: 12, deleted: 0 } })).toBe('dirty (+12/-0)')
 })
 
-test('worktree create reports partial success when the follow-up list fails', async () => {
+test('worktree switch reports partial success when the follow-up list fails', async () => {
   const marker = join(mkdtempSync(join(tmpdir(), 'wt-partial-')), 'switched')
   const base = { schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] }
   stubOnPath(
@@ -433,6 +438,32 @@ test('worktree create reports partial success when the follow-up list fails', as
   )
   const result = await loadTool().execute('id', { operation: 'switch', branch: 'feature' }, undefined, undefined, ctx())
   expect(resultText(result)).toMatch(/Switched to feature\. wt list failed with exit code 3/)
+  expect(resultText(result)).toContain('list is down')
+})
+
+test('worktree create reports partial success when the follow-up list fails', async () => {
+  const marker = join(mkdtempSync(join(tmpdir(), 'wt-partial-')), 'created')
+  const base = { schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] }
+  stubOnPath(
+    'wt',
+    [
+      `if [ "$1" = "switch" ]; then touch ${shellQuote(marker)}; exit 0; fi`,
+      `if [ "$1" = "list" ]; then`,
+      `  if [ -f ${shellQuote(marker)} ]; then printf '%s\\n' "list is down" >&2; exit 3; fi`,
+      `  printf '%s' ${shellQuote(JSON.stringify(base))}`,
+      `  exit 0`,
+      'fi',
+      'exit 0',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'create', branch: 'newbranch' },
+    undefined,
+    undefined,
+    ctx(),
+  )
+  expect(resultText(result)).toMatch(/Created branch newbranch\. wt list failed with exit code 3/)
   expect(resultText(result)).toContain('list is down')
 })
 

@@ -1,7 +1,7 @@
 import { execFile, type ExecFileOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-import { truncateTail } from '@earendil-works/pi-coding-agent'
+import { formatSize, truncateTail } from '@earendil-works/pi-coding-agent'
 
 export interface RunOptions {
   cwd?: string | undefined
@@ -24,8 +24,14 @@ const NON_INTERACTIVE_ENV = { GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1' 
 export function truncateOutput(text: string, maxLines?: number): string {
   const result = truncateTail(text, maxLines === undefined ? undefined : { maxLines })
   if (!result.truncated) return text
-  return `${result.content}\n\n[... truncated; showing the last ${result.outputLines} of ${result.totalLines} lines]`
+  const notice =
+    result.truncatedBy === 'bytes'
+      ? `[... truncated to ${formatSize(result.outputBytes)}; showing the last ${result.outputLines} of ${result.totalLines} lines]`
+      : `[... truncated; showing the last ${result.outputLines} of ${result.totalLines} lines]`
+  return `${result.content}\n\n${notice}`
 }
+
+type RunExecOptions = ExecFileOptions & { stdio?: ['ignore', 'pipe', 'pipe'] }
 
 /**
  * Run a command with an argument array and never throw on a non-zero exit.
@@ -34,9 +40,10 @@ export function truncateOutput(text: string, maxLines?: number): string {
  */
 export function run(command: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
   return new Promise((resolve) => {
-    const execOptions: ExecFileOptions = {
+    const execOptions: RunExecOptions = {
       maxBuffer: MAX_BUFFER,
       env: { ...process.env, ...NON_INTERACTIVE_ENV },
+      stdio: ['ignore', 'pipe', 'pipe'],
     }
     if (options.cwd !== undefined) execOptions.cwd = options.cwd
     if (options.signal !== undefined) execOptions.signal = options.signal

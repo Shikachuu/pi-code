@@ -76,3 +76,8 @@ test('truncateOutput keeps the tail and pins the notice', () => {
   const text = ['a', 'b', 'c', 'd', 'e'].join('\n')
   expect(truncateOutput(text, 3)).toBe('c\nd\ne\n\n[... truncated; showing the last 3 of 5 lines]')
 })
+
+test('truncateOutput names the byte limit when a long line is cut', () => {
+  const out = truncateOutput(`a\n${'x'.repeat(60_000)}\nb`)
+  expect(out).toContain('truncated to')
+})
