@@ -9,7 +9,7 @@ export function templatePath(dir: string, name: string): string {
   return join(dir, `${name}.jinja`)
 }
 
-function stripTrailingNewline(text: string): string {
+export function stripTrailingNewline(text: string): string {
   return text.endsWith('\n') ? text.slice(0, -1) : text
 }
 

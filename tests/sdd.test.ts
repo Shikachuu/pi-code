@@ -1224,6 +1224,7 @@ test('section scanning and demoteHeadings both ignore `##` lines inside code fen
 
 test('demoteHeadings shifts h1 down one level and leaves h6 alone', () => {
   expect(demoteHeadings('# H1\n###### H6\n##### H5')).toBe('## H1\n###### H6\n###### H5')
+  expect(demoteHeadings('###\ntext')).toBe('###\ntext')
 })
 
 test('an unbalanced fence leaves later headings undemoted and out of section bounds', () => {

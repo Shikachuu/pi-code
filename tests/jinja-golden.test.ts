@@ -160,6 +160,21 @@ test('draft prompts match the pre-port goldens for the compose and revise branch
   )
 })
 
+test('draftArgs revises when a draft is present even without feedback', () => {
+  const args = draftArgs({
+    request: 'add phone',
+    enrichment: ENRICHMENT,
+    answers: '',
+    memory: '',
+    draft: '# D',
+    feedback: '',
+  })
+  expect(args.label).toBe('revise spec')
+  expect(args.prompt).toContain('Revise this spec draft')
+  expect(args.prompt).toContain('<draft>\n# D\n</draft>')
+  expect(args.prompt).not.toContain('Compose a feature spec')
+})
+
 test('discovery prompts match the pre-port goldens', () => {
   const discovery = discoveryArgs(SPEC, undefined, MEMORY)
   expectGolden('discovery-plan', discovery.plan.prompt)

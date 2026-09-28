@@ -3,10 +3,10 @@
   "title": "Port hand-rolled prompt and markdown templates to @huggingface/jinja",
   "phase": "implementing",
   "createdAt": "2026-09-28T09:10:52.425Z",
-  "updatedAt": "2026-09-28T13:46:28.040Z",
-  "verifyRounds": 6,
+  "updatedAt": "2026-09-28T14:36:05.100Z",
+  "verifyRounds": 7,
   "verification": {
     "verdict": "REQUEST CHANGES",
-    "at": "2026-09-28T13:46:28.038Z"
+    "at": "2026-09-28T14:36:05.098Z"
   }
 }
