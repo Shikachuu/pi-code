@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { expect, test } from 'vitest'
 
-import { run, truncateOutput } from '../agent/extensions/lib/exec.ts'
+import { detailOf, run, truncateOutput } from '../agent/extensions/lib/exec.ts'
 
 const node = process.execPath
 
@@ -66,6 +66,18 @@ test('run names the byte limit when a command exceeds maxBuffer', async () => {
   expect(result.ok).toBe(false)
   expect(result.missing).toBe(false)
   expect(result.stderr).toContain('command output exceeded the')
+})
+
+test('run kills a child that exceeds the timeout', async () => {
+  const result = await run(node, ['-e', 'setTimeout(() => {}, 60000)'], { timeoutMs: 50 })
+  expect(result.ok).toBe(false)
+  expect(result.stderr).toContain('timed out after 50ms')
+})
+
+test('detailOf prefers stderr, then stdout, then a placeholder', () => {
+  expect(detailOf({ ok: false, stdout: 'out', stderr: 'err', code: 1, missing: false })).toBe('err')
+  expect(detailOf({ ok: false, stdout: 'out', stderr: '  ', code: 1, missing: false })).toBe('out')
+  expect(detailOf({ ok: false, stdout: '', stderr: '', code: 1, missing: false })).toBe('(no output)')
 })
 
 test('truncateOutput returns short input unchanged', () => {

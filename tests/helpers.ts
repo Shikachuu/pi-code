@@ -102,22 +102,27 @@ export interface StubOnPath extends Stub {
 
 const pathStubs: Stub[] = []
 
-const ARG_FIELD_SEPARATOR = '\x1e'
-const CALL_SEPARATOR = '\0'
-
+// Arguments are NUL-terminated and each call ends with an empty NUL field, so
+// argument boundaries survive any byte an argument can contain.
 function readCallArgs(path: string): string[][] {
+  let raw: string
   try {
-    return readFileSync(path, 'utf8')
-      .split(CALL_SEPARATOR)
-      .filter((record) => record.length > 0)
-      .map((record) => {
-        const parts = record.split(ARG_FIELD_SEPARATOR)
-        if (parts[parts.length - 1] === '') parts.pop()
-        return parts
-      })
+    raw = readFileSync(path, 'utf8')
   } catch {
     return []
   }
+  const calls: string[][] = []
+  let current: string[] = []
+  for (const field of raw.split('\0')) {
+    if (field === '') {
+      if (current.length > 0) calls.push(current)
+      current = []
+      continue
+    }
+    current.push(field)
+  }
+  if (current.length > 0) calls.push(current)
+  return calls
 }
 
 export function stubOnPath(name: string, script: string): StubOnPath {
@@ -126,7 +131,7 @@ export function stubOnPath(name: string, script: string): StubOnPath {
   const file = join(dir, name)
   writeFileSync(
     file,
-    `#!/bin/sh\nprintf '%s${ARG_FIELD_SEPARATOR}' "$@" >> ${shellQuote(logPath)}\nprintf '\\000' >> ${shellQuote(logPath)}\n${script}\n`,
+    `#!/bin/sh\nprintf '%s\\000' "$@" >> ${shellQuote(logPath)}\nprintf '\\000' >> ${shellQuote(logPath)}\n${script}\n`,
   )
   chmodSync(file, 0o755)
   const previous = process.env.PATH ?? ''

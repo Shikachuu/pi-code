@@ -294,14 +294,20 @@ test('worktree remove maps force and keepBranch to wt flags and runs in the fore
     schema: 2,
     items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true, changes: DIRTY_CHANGES } }],
   })
-  await loadTool().execute('id', { operation: 'remove', force: true }, undefined, undefined, ctx())
+  await loadTool().execute('id', { operation: 'remove', branch: 'feature', force: true }, undefined, undefined, ctx())
   expect(wt.callArgs()).toContainEqual(['remove', 'feature', '-f', '--foreground'])
 
   const wt2 = stubList({
     schema: 2,
     items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true, changes: DIRTY_CHANGES } }],
   })
-  await loadTool().execute('id', { operation: 'remove', force: true, keepBranch: true }, undefined, undefined, ctx())
+  await loadTool().execute(
+    'id',
+    { operation: 'remove', branch: 'feature', force: true, keepBranch: true },
+    undefined,
+    undefined,
+    ctx(),
+  )
   expect(wt2.callArgs()).toContainEqual(['remove', 'feature', '-f', '--no-delete-branch', '--foreground'])
 })
 
@@ -358,7 +364,13 @@ test('worktree refuses to remove the worktree it is running in even when forced'
     schema: 2,
     items: [{ branch: 'feature', worktree: { path: tmpdir(), current: true } }],
   })
-  const result = await loadTool().execute('id', { operation: 'remove', force: true }, undefined, undefined, ctx())
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'remove', branch: 'feature', force: true },
+    undefined,
+    undefined,
+    ctx(),
+  )
   expect(resultText(result)).toMatch(/Refusing to remove/)
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
@@ -373,7 +385,13 @@ test('worktree refuses to remove the worktree when cwd is a subdirectory of it',
     hasUI: true,
     ui: { confirm: async () => true, notify: () => {} },
   })
-  const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, nestedCtx)
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'remove', branch: 'feature' },
+    undefined,
+    undefined,
+    nestedCtx,
+  )
   expect(resultText(result)).toMatch(/Refusing to remove/)
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
@@ -395,11 +413,48 @@ test('worktree remove refuses without a UI and never runs wt remove', async () =
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
 
-test('worktree remove needs a branch when no worktree is current', async () => {
-  const wt = stubList({ schema: 2, items: [{ branch: 'main', worktree: { path: '/repo' } }] })
+test('worktree remove requires a branch name', async () => {
+  const wt = stubList({ schema: 2, items: [{ worktree: { path: '/wt/x', current: true } }] })
   const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, ctx())
-  expect(resultText(result)).toMatch(/needs a branch/)
-  expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
+  expect(resultText(result)).toMatch(/requires a branch name/)
+  expect(wt.callArgs()).toEqual([['list', '--format=json']])
+})
+
+test('worktree remove confirms an unknown branch with the bare name', async () => {
+  const wt = stubList({
+    schema: 2,
+    items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }],
+  })
+  let confirmBody = ''
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd: tmpdir(),
+    hasUI: true,
+    ui: {
+      confirm: async (_title: string, message: string) => {
+        confirmBody = message
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  await loadTool().execute('id', { operation: 'remove', branch: 'typo' }, undefined, undefined, capturingCtx)
+  expect(confirmBody).toContain('Remove typo?')
+  expect(wt.callArgs()).toContainEqual(['remove', 'typo', '--foreground'])
+})
+
+test('worktree switch falls back when the follow-up list lacks the branch', async () => {
+  stubList({ schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] })
+  const result = await loadTool().execute('id', { operation: 'switch', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toBe('Switched to branch feature.')
+})
+
+test('worktree surfaces a stdout-only failure and the no-output placeholder', async () => {
+  stubOnPath('wt', 'if [ "$1" = "list" ]; then printf "%s\\n" "stdout detail"; exit 1; fi')
+  const stdoutResult = await loadTool().execute('id', { operation: 'list' }, undefined, undefined, ctx())
+  expect(resultText(stdoutResult)).toContain('stdout detail')
+  stubOnPath('wt', 'if [ "$1" = "list" ]; then exit 1; fi')
+  const silentResult = await loadTool().execute('id', { operation: 'list' }, undefined, undefined, ctx())
+  expect(resultText(silentResult)).toContain('(no output)')
 })
 
 test('worktree switch uses --no-cd so the agent never changes directory', async () => {

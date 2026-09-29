@@ -207,6 +207,38 @@ test('auth reports hosts when logged in and stderr when logged out', async () =>
   expect(loggedOutStub.calls()).toContain('auth status')
 })
 
+test('auth falls through to the human form when the json call fails', async () => {
+  const gh = stubGh(
+    [
+      'if [ "$1" = "auth" ]; then',
+      '  if [ "$3" = "--json" ]; then exit 3; fi',
+      '  printf "%s\\n" "human form"',
+      '  exit 0',
+      'fi',
+      'exit 1',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute('id', { operation: 'auth' }, undefined, undefined, readOnlyCtx(process.cwd()))
+  expect(resultText(result)).toContain('human form')
+  expect(gh.callArgs().some((args) => args.includes('--json'))).toBe(true)
+  expect(gh.callArgs().some((args) => args.join(' ') === 'auth status')).toBe(true)
+})
+
+test('auth reports a missing gh binary on the human fallback', async () => {
+  restrictPath(mkdtempSync(join(tmpdir(), 'no-gh-')))
+  stubGh(
+    [
+      'if [ "$1" = "auth" ]; then',
+      '  if [ "$3" = "--json" ]; then printf \'%s\' \'{"hosts":{}}\'; /bin/rm -f "$0"; exit 0; fi',
+      '  exit 0',
+      'fi',
+      'exit 1',
+    ].join('\n'),
+  )
+  const result = await loadTool().execute('id', { operation: 'auth' }, undefined, undefined, readOnlyCtx(process.cwd()))
+  expect(resultText(result)).toMatch(/gh \(not found on PATH\)/)
+})
+
 test('auth falls back to the authenticated placeholder on empty output', async () => {
   stubGh('if [ "$1" = "auth" ]; then exit 0; fi\nexit 1')
   const result = await loadTool().execute('id', { operation: 'auth' }, undefined, undefined, readOnlyCtx(process.cwd()))
@@ -253,6 +285,47 @@ test('a failing pr edit surfaces the command stderr', async () => {
   expect(resultText(result)).toMatch(/gh pr edit failed with exit code 1/)
 })
 
+test('pr update with no target names the current branch and passes no positional', async () => {
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then printf '%s\\n' 'https://github.com/o/r/pull/7'; exit 0; fi\nexit 1`,
+  )
+  let confirmBody = ''
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd: process.cwd(),
+    hasUI: true,
+    ui: {
+      confirm: async (_title: string, message: string) => {
+        confirmBody = message
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', title: 'x' },
+    undefined,
+    undefined,
+    capturingCtx,
+  )
+  expect(confirmBody).toContain('Pull request: current branch')
+  expect(gh.callArgs()).toEqual([['pr', 'edit', '--title', 'x']])
+  expect(resultText(result)).toContain('https://github.com/o/r/pull/7')
+})
+
+test('a declined pr update with no target never executes gh', async () => {
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', title: 'x' },
+    undefined,
+    undefined,
+    ctx(process.cwd(), false),
+  )
+  expect(resultText(result)).toMatch(/not updated/i)
+  expect(gh.calls()).toEqual([])
+})
+
 test('pr update needs a title or body and never calls gh', async () => {
   const gh = stubGh('exit 1')
   const result = await loadTool().execute(
@@ -287,6 +360,56 @@ test('pr create derives the title and body from local commits', async () => {
     '--base',
     'main',
   ])
+})
+
+test('pr create names the requested base when it cannot be resolved', async () => {
+  const cwd = initRepo()
+  let prompted = false
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd,
+    hasUI: true,
+    ui: {
+      confirm: async () => {
+        prompted = true
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', base: 'nope', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    capturingCtx,
+  )
+  expect(resultText(result)).toContain('"nope"')
+  expect(resultText(result)).toContain('refs/remotes/<remote>/<name>')
+  expect(prompted).toBe(false)
+})
+
+test('pr create reports the placeholder and raw stdout on a silent success', async () => {
+  const cwd = initRepo()
+  stubGh(`if [ "$1" = "pr" ] && [ "$2" = "create" ]; then exit 0; fi\nexit 1`)
+  const placeholder = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(placeholder)).toBe('Pull request created.')
+
+  const cwd2 = initRepo()
+  stubGh(`if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'no link here'; exit 0; fi\nexit 1`)
+  const echo = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd2, true),
+  )
+  expect(resultText(echo)).toBe('no link here')
 })
 
 test('pr create needs a base branch when neither main nor master exists', async () => {
@@ -710,6 +833,13 @@ test('unparseable repo view and pr view output is reported', async () => {
   const pr = await loadTool().execute('id', { operation: 'pr view' }, undefined, undefined, readOnlyCtx(process.cwd()))
   expect(resultText(pr)).toMatch(/could not parse/)
   expect(gh.calls().length).toBeGreaterThan(0)
+})
+
+test('parseAuthHosts and parseRepoView reject malformed objects', () => {
+  expect(parseAuthHosts(JSON.stringify([]))).toBeUndefined()
+  expect(parseAuthHosts(JSON.stringify({ hosts: 'nope' }))).toBeUndefined()
+  expect(parseRepoView(JSON.stringify([]))).toBeUndefined()
+  expect(formatPrView(must(parsePrView(JSON.stringify({ headRefName: 'x' })), 'pr'))).toContain('x -> ?')
 })
 
 test('parseAuthHosts handles the hosts envelope and rejects junk', () => {

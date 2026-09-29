@@ -1,7 +1,7 @@
 import { type ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-import { run, truncateOutput } from '../lib/exec.ts'
+import { detailOf, run, truncateOutput } from '../lib/exec.ts'
 import { COMMIT_GUIDELINES, renderRules, validateSubject } from './message.ts'
 
 const Params = Type.Object({
@@ -22,7 +22,7 @@ async function stagedDiff(cwd: string, signal: AbortSignal | undefined, extra: s
   if (!result.ok) {
     return {
       ok: false,
-      error: `git ${args.join(' ')} failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim() || '(no output)', 20)}`,
+      error: `git ${args.join(' ')} failed with exit code ${result.code}: ${truncateOutput(detailOf(result), 20)}`,
     }
   }
   return { ok: true, hasChanges: result.stdout.trim().length > 0, text: result.stdout }
@@ -59,9 +59,7 @@ export default function (pi: ExtensionAPI) {
       const result = await run('git', ['commit', '-m', params.message], { cwd, signal })
       if (result.missing) return text(`git (not found on PATH): ${result.stderr.trim()}`)
       if (!result.ok) {
-        return text(
-          `git commit failed with exit code ${result.code}: ${truncateOutput(result.stderr.trim() || result.stdout.trim() || '(no output)', 20)}`,
-        )
+        return text(`git commit failed with exit code ${result.code}: ${truncateOutput(detailOf(result), 20)}`)
       }
 
       const head = await run('git', ['log', '-1', '--format=%H%n%s'], { cwd, signal })
@@ -105,7 +103,6 @@ export default function (pi: ExtensionAPI) {
           }
         }
       }
-      // Prefer origin, then a single configured remote.
       if (!remote && remotes.includes('origin')) remote = 'origin'
       if (!remote && remotes.length === 1) remote = remotes[0] ?? ''
       if (!remote && remotes.length > 1) {
@@ -134,7 +131,7 @@ export default function (pi: ExtensionAPI) {
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {
         return text(
-          `git push failed with exit code ${push.code}: ${truncateOutput(push.stderr.trim() || push.stdout.trim() || '(no output)', 20)}\n\nThe commit stays local.`,
+          `git push failed with exit code ${push.code}: ${truncateOutput(detailOf(push), 20)}\n\nThe commit stays local.`,
         )
       }
       return text(`Committed and pushed ${branch} to ${remote}:\n${summary}${hintText}`)

@@ -281,6 +281,27 @@ test('a headless push confirmation returns guidance and does not push', async ()
   expect(stub.pushes()).toEqual([])
 })
 
+test('commit surfaces a failure that only writes stdout', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const realGit = which('git')
+  stubOnPath(
+    'git',
+    `if [ "$1" = "commit" ]; then printf '%s\\n' "stdout detail"; exit 1; fi\nexec ${shellQuote(realGit)} "$@"`,
+  )
+  const result = await loadTool().execute('id', { message: 'feat: add more' }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toContain('stdout detail')
+})
+
+test('commit surfaces a silent failure with the no-output placeholder', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const realGit = which('git')
+  stubOnPath('git', `if [ "$1" = "commit" ]; then exit 1; fi\nexec ${shellQuote(realGit)} "$@"`)
+  const result = await loadTool().execute('id', { message: 'feat: add more' }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toContain('(no output)')
+})
+
 test('a rejected push surfaces the failure and keeps the commit local', async () => {
   const cwd = repoWithRemote()
   stage(cwd, 'b.txt', 'b\n')
@@ -382,6 +403,32 @@ test('push refuses to guess between multiple non-origin remotes', async () => {
   expect(stub.pushes()).toEqual([])
   expect(() => git(cwd, ['rev-parse', '--verify', 'fork/feature'])).toThrow(/revision/i)
   expect(() => git(cwd, ['rev-parse', '--verify', 'upstream/feature'])).toThrow(/revision/i)
+})
+
+test('push uses the only configured remote when it is not origin', async () => {
+  const cwd = initRepo()
+  const upstreamRemote = mkdtempSync(join(tmpdir(), 'commit-solo-'))
+  git(upstreamRemote, ['init', '--bare'])
+  git(cwd, ['remote', 'add', 'upstream', upstreamRemote])
+  git(cwd, ['checkout', '-b', 'feature'])
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  let confirmMessage = ''
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd,
+    hasUI: true,
+    ui: {
+      confirm: async (_title: string, message: string) => {
+        confirmMessage = message
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, capturingCtx)
+  expect(confirmMessage).toContain('upstream/feature')
+  expect(stub.pushes()).toEqual([['push', '--set-upstream', 'upstream', 'feature']])
+  expect(git(upstreamRemote, ['branch', '--format=%(refname)'])).toContain('refs/heads/feature')
 })
 
 test('push with no remote leaves the commit local', async () => {

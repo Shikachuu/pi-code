@@ -144,7 +144,7 @@ export default function (pi: ExtensionAPI) {
           if (!resolved) {
             const looked = params.base ? `"${params.base}"` : '(main or master)'
             return text(
-              `Could not find base branch ${looked} as a local or origin ref. Create it or pass a valid base.`,
+              `Could not find base branch ${looked} as a local ref or refs/remotes/<remote>/<name> for any configured remote. Create it or pass a valid base.`,
             )
           }
           const base = resolved.base

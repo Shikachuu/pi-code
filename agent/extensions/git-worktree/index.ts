@@ -3,7 +3,7 @@ import { realpathSync } from 'node:fs'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-import { run } from '../lib/exec.ts'
+import { detailOf, run } from '../lib/exec.ts'
 import {
   describeChanges,
   existingWorktreeError,
@@ -48,7 +48,7 @@ async function loadWorktrees(cwd: string, signal: AbortSignal | undefined): Prom
   if (!result.ok) {
     return {
       ok: false,
-      error: `wt list failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
+      error: `wt list failed with exit code ${result.code}: ${detailOf(result)}`,
     }
   }
   const envelope = parseEnvelope(result.stdout)
@@ -106,9 +106,7 @@ export default function (pi: ExtensionAPI) {
           const result = await run('wt', ['switch', '-c', branch, '--no-cd'], { cwd, signal })
           if (result.missing) return text(`wt (not found on PATH): ${result.stderr.trim()}`)
           if (!result.ok) {
-            return text(
-              `wt switch -c ${branch} failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
+            return text(`wt switch -c ${branch} failed with exit code ${result.code}: ${detailOf(result)}`)
           }
           const after = await loadWorktrees(cwd, signal)
           if (!after.ok) return text(`Created branch ${branch}. ${after.error}`)
@@ -126,9 +124,7 @@ export default function (pi: ExtensionAPI) {
           const result = await run('wt', ['switch', branch, '--no-cd'], { cwd, signal })
           if (result.missing) return text(`wt (not found on PATH): ${result.stderr.trim()}`)
           if (!result.ok) {
-            return text(
-              `wt switch ${branch} failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
+            return text(`wt switch ${branch} failed with exit code ${result.code}: ${detailOf(result)}`)
           }
           const after = await loadWorktrees(cwd, signal)
           if (!after.ok) return text(`Switched to ${branch}. ${after.error}`)
@@ -139,8 +135,12 @@ export default function (pi: ExtensionAPI) {
         case 'remove': {
           const loaded = await loadWorktrees(cwd, signal)
           if (!loaded.ok) return text(loaded.error)
-          const branch = requestedBranch || findCurrent(loaded.envelope)?.branch
-          if (!branch) return text('worktree remove needs a branch when there is no current worktree.')
+          const branch = requestedBranch
+          if (!branch) {
+            return text(
+              'worktree remove requires a branch name; the current worktree is never removable from inside it.',
+            )
+          }
           const target = findByBranch(loaded.envelope, branch)
           const resolvedTarget = target ? realPath(target.path) : ''
           const resolvedCwd = realPath(cwd)
@@ -169,9 +169,7 @@ export default function (pi: ExtensionAPI) {
           const result = await run('wt', args, { cwd, signal })
           if (result.missing) return text(`wt (not found on PATH): ${result.stderr.trim()}`)
           if (!result.ok) {
-            return text(
-              `wt remove ${branch} failed with exit code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`,
-            )
+            return text(`wt remove ${branch} failed with exit code ${result.code}: ${detailOf(result)}`)
           }
           const after = await loadWorktrees(cwd, signal)
           const removed = after.ok && !findByBranch(after.envelope, branch)

@@ -159,6 +159,184 @@
           "agents": ["comment-auditor"]
         }
       ]
+    },
+    {
+      "run": 2,
+      "at": "2026-09-29T08:58:27.079Z",
+      "verdict": "REQUEST CHANGES",
+      "findings": [
+        {
+          "severity": "important",
+          "category": "placeholder-in-argv",
+          "file": "agent/extensions/git-worktree/index.ts",
+          "line": 142,
+          "issue": "`const branch = requestedBranch || findCurrent(loaded.envelope)?.branch` falls back to a display placeholder. `findCurrent` returns `summarize(item)`, which substitutes the literal string `'(detached)'` when the item has no string `branch` (worktrees.ts:113), and that string is then pushed as the branch positional: `wt remove (detached) [--foreground]`. The user sees `Remove (detached)?` in the dialog and then a wt error naming a branch that does not exist. The fallback also cannot do anything useful in the normal case: when the current worktree is attached, `target` resolves to the current worktree, `ownsCwd` fires at line 147 and the call is refused, so `remove` with no branch either refuses or runs a bogus command. The parameter is already documented as `(required for remove)` at index.ts:26, so the fallback contradicts the contract it is supposed to serve. I could not observe a detached `wt list` envelope on this machine (creating one is not a read-only action), so the `'(detached)'` arm is inferred from the code and from .pi/sdd/git-workspace-extension/discovery.md:27, which shows `worktree.detached` as a separate flag; if wt instead emits `\"branch\": \"\"` the observable symptom is the misleading `remove needs a branch when there is no current worktree` text instead. Either way the path is wrong.",
+          "fix": "Delete the fallback and require the branch: `const branch = requestedBranch; if (!branch) return text('worktree remove requires a branch name (the current worktree is never removable from inside it).')`. That also removes the only path by which the `realPath(cwd)`-based guard can be evaluated against a non-current target, and the guard's best-effort behaviour (it degrades to a raw-path compare when `realpathSync(cwd)` throws) stops mattering for the no-argument form. If the fallback is kept, read the branch from the raw item rather than the summary and return a dedicated message when it is missing or equals the placeholder. Add a test: `stubList({schema:2,items:[{worktree:{path:'/wt/x',current:true}}]})` with `{operation:'remove'}` asserting `/requires a branch/` and that `wt.callArgs()` has no `remove` entry.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "important",
+          "category": "no-child-timeout",
+          "file": "agent/extensions/lib/exec.ts",
+          "line": 42,
+          "issue": "`run` spawns `git`, `gh` and `wt` with `maxBuffer` but no `timeout`, and `RunOptions` exposes only `cwd` and `signal`. A child that never exits leaves the returned promise pending forever, so the tool call never returns and the agent turn hangs until the user presses escape (pi aborts via the gate signal, which is the only escape hatch). The concrete hang is `git push` over ssh: `GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1` stop git and gh prompts, but neither stops `ssh` from opening /dev/tty for a passphrase on an encrypted key, and a black-holed TCP connect from `gh` has no bound either. pi's own bash tool bounds this with `timeoutMs` (default 120000 in chunk-4DKZACXI.js), so the repo already has the precedent this helper drops. A killed child is also reported opaquely: for any failure that wrote nothing and is neither ENOENT nor a maxBuffer overrun, `stderrText` at line 75 is `err || (aborted ? error.message : '')`, which is `''`, so the worktree and commit callers render `wt list failed with exit code 1: ` / `git commit failed with exit code 1: ` with a dangling colon and no explanation (only git-gh has the `'(no output from gh)'` placeholder).",
+          "fix": "Add `timeoutMs?: number` to `RunOptions`, pass it through as `execOptions.timeout` (Node's `execFile` kills the child and returns), default it to something like 120_000 for every call, and treat the kill as a failure: when `error.killed` is set, return `stderr: command + ' timed out after ' + timeoutMs + 'ms'`. Also give the empty-detail case a placeholder in `agent/extensions/git-worktree/index.ts:51,110,130,173` and `agent/extensions/git-commit/index.ts:25,63,137` so a silent failure never renders as a colon with nothing after it. One test: `run(process.execPath, ['-e', 'setTimeout(()=>{}, 60000)'], { timeoutMs: 50 })` asserting `ok === false` and stderr mentioning the timeout.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "stale-error-message",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 147,
+          "issue": "`resolveBase` now probes every remote from `git remote` (index.ts:49-56, 60-64) instead of only `origin`, but the refusal it feeds still says `as a local or origin ref`. A user whose only remote is `upstream` reads an error naming a remote that was never searched, which sends them down the wrong path. The test at tests/git-gh.test.ts:303 only matches `/Could not find base branch/` so it does not pin the stale half.",
+          "fix": "No linter or formatter rule covers message text. Change the string to `Could not find base branch ${looked} as a local ref or refs/remotes/<remote>/<name> for any configured remote.` and tighten tests/git-gh.test.ts:303 to assert the full sentence.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "test-harness-separator-collision",
+          "file": "tests/helpers.ts",
+          "line": 105,
+          "issue": "`stubOnPath` records argv as fields joined by `\\x1e` and `readCallArgs` splits records on the same byte. One argument the tools actually pass contains that byte: `gitLogArgs` in agent/extensions/git-gh/ghops.ts:114 is `['log','-n','50','--format=%s%n%b\\x1e', ...]`. Any current or future assertion on a stubbed `git log` call therefore reads `--format=%s%n%b` and `main..HEAD` as two separate arguments. Nothing breaks today only because the gh tests stub `git` and then assert on the `gh` stub's log, never on the git stub's.",
+          "fix": "No linter covers the fixture encoding. Make each field unambiguous before writing, e.g. base64-encode every argument in the printf (`printf '%s\\0' \"$@\" | base64`) and decode in `readCallArgs`, or switch the field separator to a byte git never emits in an argument and keep the NUL record separator as-is.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "redundant-test-run",
+          "file": "mise.toml",
+          "line": 76,
+          "issue": "`mise run check` runs `{ task = \"test\" }` (mise.toml:25, all 21 files) and then `{ task = \"coverage\" }` (mise.toml:30, the same 4 git-tool files again). Measured here: 9.05s for the full run and 8.45s for the coverage run, so the four new test files execute twice per gate.",
+          "fix": "No linter or formatter rule covers task composition. Give `tasks.test` the `--coverage` flag so vitest.config.ts thresholds apply to the whole suite, and drop `tasks.coverage` from the `check` list, or narrow `tasks.coverage` to `--coverage.reporter=text --coverage.thresholds.lines=0`-style no-op and keep it as a separate manual task.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "stale-plan",
+          "file": ".pi/sdd/git-workspace-extension/plan.md",
+          "line": 34,
+          "issue": "The plan describes a helper that does not exist: line 34 and task 1 at line 51 both promise `agent/extensions/lib/exec.ts` exporting `run` and `tryRun`, and line 27 documents the signature as `run(cmd, args, { cwd, signal, env })`. The shipped module exports only `run`, takes `{ cwd, signal }`, and hardcodes the non-interactive env internally, so there is no `tryRun` and no `env` override. The plan is the artifact the next implementer reads.",
+          "fix": "No linter covers prose. Update plan.md:34 and :51 to the shipped `run` signature and drop `tryRun`, or add the `tryRun` wrapper if a later change needs it.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 110,
+          "issue": "The last rung of the push-remote ladder, `if (!remote && remotes.length === 1) remote = remotes[0] ?? ''`, never executes. v8 shows statement 110 at count 0 and the `if` with branch counts [0, 13]. Every push test repo has either zero remotes (git-commit.test.ts:387), two remotes including origin (:537, :325, :338, :350) or an upstream, so the true side is never taken. This is the ordinary fork-clone shape: one remote named `upstream`, a fresh branch, `push: true`, no push config. I drove it manually (temp repo, bare remote named `upstream`, no upstream tracking, no pushRemote/pushDefault): the tool returned `Committed and pushed feature to upstream:` and the bare remote gained `refs/heads/feature`, so the behaviour is correct and this is a coverage gap, not a bug. But a regression that dropped this rung (falling through to `No git remote is configured`) or reordered it above the pushRemote loop would leave the suite fully green, because every existing multi-remote test has two or more remotes and therefore never depends on the single-remote rung.",
+          "fix": "Add a tool-level test: build a temp repo whose only remote is a bare repo named `upstream`, no `branch.feature.pushRemote` and no `remote.pushDefault`, stage a change, `{ message, push: true }` with a confirm spy returning true. Assert the exact push argv `['push', '--set-upstream', 'upstream', 'feature']`, that the confirm body named `upstream/feature`, and that `git branch --format=%(refname)` in the bare repo contains `refs/heads/feature`. Reuse the `repoWithRemote` + `stubGit()` pattern from git-commit.test.ts:325.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 180,
+          "issue": "`pr update` with no `target` never runs. Both cond-exprs on 180-181 report counts [4, 0]: all four tool-level `pr update` calls (tests/git-gh.test.ts:216, :231, :243, :256, :490, :494) pass `target: '12'`, so `watched` is always `Pull request: 12` and the `Pull request: current branch` arm is dead in the suite. `target` is declared optional (index.ts:34) and the tool's own promptGuidelines do not require it, so this is the common \"rename the PR for the branch I am on\" call. I drove it against a stub gh: the confirm body was `Pull request: current branch\\nTitle: x` and gh received `pr edit --title x` with no positional. The behaviour is correct, but the only thing telling the user which PR a mutating, confirm-gated call will rewrite is that ternary, and inverting it (or dropping the `target ?` arm so it always says `?`) would not fail a single test. The argv builder itself is unit-tested for the no-target case (git-gh.test.ts:797), which is exactly why the tool-level path can regress unnoticed.",
+          "fix": "Add one test calling `{ operation: 'pr update', title: 'x' }` with no target and a confirm spy that captures the dialog body; assert the body contains `Pull request: current branch`, that `gh.callArgs()` equals `[['pr','edit','--title','x']]`, and that the result reports the URL. Add the declined variant asserting `gh.calls()` is empty, mirroring the existing declined tests.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 104,
+          "issue": "Still open from the previous two rounds: the `auth` human-form missing-binary guard, `if (human.missing) return text(ghFailure('gh auth status', human))`, has branch counts [0, 2] and is the only statement in git-gh/index.ts with zero count. The `restrictPath(emptyPathDir())` test at git-gh.test.ts:385 covers the first call's guard (now line 98), not this one. Reaching it needs gh to disappear between the two spawns, so it is defensive rather than a production path, and the rendering it produces is identical to the covered line 98. The self-deleting stub pattern already exists at tests/git-worktree.test.ts:124, so the test is cheap if the branch is worth pinning.",
+          "fix": "Either add a `gh` stub that serves the `--json hosts` call and then removes itself, then assert `{ operation: 'auth' }` matches /gh \\(not found on PATH\\)/; or, if the branch is judged unreachable, return the guard's error from the first missing check and delete line 104 so there is nothing left uncovered.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 99,
+          "issue": "`if (json.ok)` has counts [3, 0]: no test makes `gh auth status --json hosts` exit non-zero, so the fall-through to the human form after a failing JSON call is unexercised. I checked the real binary: gh 2.101.0 with an empty config dir exits 0 and prints `{\"hosts\":{}}` when logged out, which is what the logged-out test at git-gh.test.ts:187 stubs, so this arm only fires on an older or different gh. I drove it with a stub that exits 3 on the JSON form and the tool correctly returned the human-form message, so the behaviour is right; the gap is that a change which returned early on `!json.ok` instead of falling through would not fail any test.",
+          "fix": "Add one case to the auth test: a `gh` stub that exits non-zero for `--json hosts` and prints to stderr for the plain form, asserting the result is the human-form stderr and that both `auth status` invocations were recorded.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 145,
+          "issue": "`params.base ? `\"${params.base}\"` : '(main or master)'` reports [0, 1]: the only test that hits the unresolvable-base error (git-gh.test.ts:292) omits `base`, so the message never names the base the caller actually asked for. I confirmed the untested arm is correct: `{ operation: 'pr create', base: 'nope' }` returns `Could not find base branch \"nope\" as a local or origin ref.`. A regression that always printed `(main or main or master)` would leave the suite green on a user-facing error path.",
+          "fix": "Add a case alongside :292 calling `{ operation: 'pr create', base: 'nope' }` in a repo with no such ref, asserting the result contains `\"nope\"` and that the confirm was never reached.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 167,
+          "issue": "`pr create` when gh exits 0 but prints no PR URL is untested: the cond-expr on 167 is [6, 0] and the `result.stdout.trim() || 'Pull request created.'` chain is [0, 0], so neither the echo-stdout arm nor the `Pull request created.` placeholder has run. The declined variant (:476), the non-zero-with-URL variant (:460) and the non-zero-without-URL variant (:404) are all covered, so this is the last cell of the `pr create` result matrix. I drove it with a stub that exits 0 silently and got `Pull request created.`, so the behaviour is correct.",
+          "fix": "Add a `pr create` case with `stubGh('exit 0')` and a confirm returning true, asserting the result is exactly `Pull request created.`, plus a variant that prints a non-URL line to stdout and asserts that line is returned instead.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "uncovered-fallback",
+          "file": "agent/extensions/git-gh/ghops.ts",
+          "line": 245,
+          "issue": "The malformed-JSON-object guards in the pure parsers are still zero-count: `parseAuthHosts`'s `!isRecord(data) || !isRecord(data.hosts)` on 245 ([0, 7]) and `parseRepoView`'s `!isRecord(data)` on 267 ([0, 5]). The malformed-shape test at git-gh.test.ts:773 feeds input that fails `JSON.parse`, so it returns at the catch above and never reaches these lines. Also still open from the previous round: the non-array `accounts` and non-record account-entry skips on 248/250, and one arm of the `?? '?'` pair on 182. These are cheap unit cases on pure functions, and they are the difference between the tool saying \"output this tool could not parse\" and rendering `undefined` into the result.",
+          "fix": "Extend the existing table-driven parse tests: feed `{\"hosts\":{\"github.com\":[\"x\",{\"login\":\"a\"}],\"gitlab.com\":{}}}` to `parseAuthHosts` and assert the exact emitted lines; feed `[]` and `{\"hosts\":\"nope\"}` and assert `undefined`; feed `[]` to `parseRepoView` and assert `undefined`; add a `ParsePrView` with one of `headRefName`/`baseRefName` missing and assert the `?` placeholder.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-worktree/index.ts",
+          "line": 145,
+          "issue": "Three untested degrade-to-less-information arms on the destructive path: `target ? realPath(target.path) : ''` on 145 ([10, 0]), `selected ? ... : 'Switched to branch ...'` on 136 ([1, 0]) and `target ? ... : branch` on 159 ([7, 0]). The case behind all three is `remove` (or `switch`) naming a branch that is not in the `wt list` envelope, e.g. a typo or a branch wt has not created. Then `ownsCwd` is false, the confirm body degrades to the bare branch name with no path and no dirty-state summary, and `wt remove <name>` runs anyway. The existing remove tests (git-worktree.test.ts:292, :308, :325, :356, :366, :381, :398) all name a branch that is in the envelope. The behaviour is not unsafe here, since wt refuses to remove a worktree it does not know, but the confirm text is the only description of what is about to be deleted.",
+          "fix": "Add a `remove` case with a stub envelope containing one worktree and `{ operation: 'remove', branch: 'typo' }`: assert the confirm body contains `Remove typo?`, that the recorded `wt` argv is `['remove','typo','--foreground']`, and pin what the tool returns when wt then reports failure. Add a `switch` case where the follow-up list no longer contains the branch, asserting the `Switched to branch X.` fallback.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "unenforced-acceptance-criterion",
+          "file": "tests/git-no-writes.test.ts",
+          "line": 10,
+          "issue": "The plan's acceptance criterion is \"nothing under `agent/` is written at runtime by these tools\", but the guard is a source-text regex over `agent/extensions/{git-commit,git-gh,git-worktree}` only, and only for `writeFileSync|appendFileSync|mkdirSync|rmSync|writeFile|mkdir`. It does not scan `agent/extensions/lib/exec.ts`, which is where a write helper would most plausibly be added, and it does not match `node:fs/promises`, `createWriteStream`, `copyFile`, `rename`, `truncate`, `unlink` or `rmdir`, so several ways of writing state pass it. It is also a test of source text rather than behaviour, so it proves the string is absent, not that nothing is written. The test is still a real improvement on the previous manual `rg`, and `mise run drift` catches modifications to already-tracked files, so this is a nit rather than a gap.",
+          "fix": "Either widen the scan to all of `agent/extensions/**` and add the remaining fs write APIs to the pattern, or replace it with a behavioural test that runs each tool against a temp repo and asserts the extension tree's mtimes and file list are unchanged. If the text scan stays, add an oxlint `no-restricted-syntax` rule over `agent/extensions/**` so the check is a build failure rather than a regex in a test.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 25,
+          "issue": "The `stderr.trim() || stdout.trim() || '(no output)'` chain is copy-pasted into eight error strings across the three tools (git-commit 25, 63, 137; git-gh 107, 154; git-worktree 51, 110, 130, 173) and in every instance only the first arm is ever exercised. Coverage shows the remaining arms at zero: git-commit 25 [3,0,0], 63 [1,0,0], 137 [1,0,0]; git-gh 107 [1,0,0], 154 [1,0]; git-worktree 51 [7,0], 110 [1,0], 130 [1,0], 173 [1,0]. The visible consequence is that a tool failure whose diagnostics land on stdout instead of stderr renders as `failed with exit code 1: ` with nothing after the colon, and a silent failure never reaches the `'(no output)'` placeholder. One test against a stub that writes to stdout and one against a silent stub would cover the pattern once per tool.",
+          "fix": "Extract a single `detailOf(result)` helper next to `truncateOutput` in agent/extensions/lib/exec.ts that returns `stderr.trim() || stdout.trim() || '(no output)'`, use it at all eight sites, and add two cases in tests/exec.test.ts plus one tool-level test per tool that fails with output on stdout only and one that fails silently.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "comment-must-kill",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 108,
+          "issue": "\"// Prefer origin, then a single configured remote.\" Pure narration of the two lines below it (`if (!remote && remotes.includes('origin')) remote = 'origin'` then `if (!remote && remotes.length === 1) remote = remotes[0] ?? ''`). The ordering is legible directly from those two conditionals, the preceding config loop already spells its own priority in the `['branch.${branch}.pushRemote', 'remote.pushDefault']` key list, and nothing here is forced by a dependency: it is our own fallback policy. `git blame -L 106,110` shows the comment landed in f8934a8 on top of code already written in cc70f94, i.e. it explains code that was already self-explanatory. No keep-list clause applies.",
+          "fix": "delete. No refactor needed; the two conditionals are the spec. If the author still wants the ordering legible, the smallest reshape is to build an ordered candidate list (`[upstreamRemote, pushRemote, pushDefault, ...(remotes.includes('origin') ? ['origin'] : []), ...(remotes.length === 1 ? remotes : [])]`) and take the first non-empty entry, which makes the priority the data rather than a prose note.",
+          "agents": ["comment-auditor"]
+        },
+        {
+          "severity": "nit",
+          "category": "comment-nit",
+          "file": "agent/extensions/lib/exec.ts",
+          "line": 35,
+          "issue": "\"Run a command with an argument array and never throw on a non-zero exit. Failures are returned as `{ ok: false }` with the command's stderr so tools can surface them as text instead of exceptions.\" The never-throw-on-non-zero clause is a real contract the three calling extensions rely on and is not derivable from the `Promise<RunResult>` signature, so keep-list item 4 plausibly covers the middle of this block. But it is longer than the contract needs: \"Run a command with an argument array\" restates `run(command: string, args: string[])` verbatim, and \"so tools can surface them as text instead of exceptions\" is rationale for a return type the signature already declares. Borderline keep rather than a clean one.",
+          "fix": "delete the opening restatement and the trailing rationale, keeping only the never-throw guarantee if the contract is worth stating at the boundary.",
+          "agents": ["comment-auditor"]
+        },
+        {
+          "severity": "nit",
+          "category": "comment-nit",
+          "file": "tests/git-worktree.test.ts",
+          "line": 44,
+          "issue": "\"// Real `wt list --format=json` (schema 2) change flags are booleans with a diff count object.\" Asserts that the CLEAN_CHANGES/DIRTY_CHANGES fixtures right below mirror the real vendor wire format rather than being invented, which is a claim about an external tool's output that a reader cannot check from the literal alone (a fixture is by definition a guess). Keep-list item 2 plausibly covers it and the claim is accurate per .pi/sdd/git-workspace-extension/discovery.md:22,27, so it is a borderline keep, not a clear kill. It is also the only place recording that `boolean` (not `number`) is the form real wt emits, which is why `WtChanges` has to tolerate both.",
+          "fix": "keep only if the boolean-vs-number point is wanted; the '(schema 2)' parenthetical and 'change flags are' phrasing both restate the literal below. A narrower justification would earn the keep outright.",
+          "agents": ["comment-auditor"]
+        }
+      ]
     }
   ]
 }
