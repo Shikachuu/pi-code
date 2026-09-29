@@ -102,8 +102,6 @@ export interface StubOnPath extends Stub {
 
 const pathStubs: Stub[] = []
 
-// Arguments are NUL-terminated and each call ends with an empty NUL field, so
-// argument boundaries survive any byte an argument can contain.
 function readCallArgs(path: string): string[][] {
   let raw: string
   try {

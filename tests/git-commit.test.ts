@@ -323,6 +323,26 @@ test('a rejected push surfaces the failure and keeps the commit local', async ()
   expect(git(cwd, ['rev-list', '--count', 'origin/main..HEAD'])).toBe('1')
 })
 
+test('a failing rev-parse reports the git failure, not a detached HEAD', async () => {
+  const cwd = repoWithRemote()
+  stage(cwd, 'b.txt', 'b\n')
+  const realGit = which('git')
+  stubOnPath(
+    'git',
+    `if [ "$1" = "rev-parse" ]; then printf '%s\\n' "rev broke" >&2; exit 3; fi\nexec ${shellQuote(realGit)} "$@"`,
+  )
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).not.toContain('Detached HEAD')
+  expect(resultText(result)).toContain('Could not determine the current branch')
+  expect(resultText(result)).toContain('rev broke')
+})
+
 test('push reports a missing git binary', async () => {
   const cwd = repoWithRemote()
   git(cwd, ['push', '--set-upstream', 'origin', 'feature'])
@@ -331,7 +351,7 @@ test('push reports a missing git binary', async () => {
   restrictPath(mkdtempSync(join(tmpdir(), 'no-git-')))
   stubOnPath(
     'git',
-    `if [ "$4" = "@{upstream}" ]; then /bin/rm -f "$0"; printf '%s\\n' "origin/feature"; exit 0; fi\nexec ${shellQuote(realGit)} "$@"`,
+    `if [ "$1" = "config" ] && [ "$2" = "branch.feature.merge" ]; then /bin/rm -f "$0"; printf '%s\\n' "refs/heads/feature"; exit 0; fi\nexec ${shellQuote(realGit)} "$@"`,
   )
   const result = await loadTool().execute(
     'id',

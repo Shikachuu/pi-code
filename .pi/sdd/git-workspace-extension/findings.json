@@ -337,6 +337,139 @@
           "agents": ["comment-auditor"]
         }
       ]
+    },
+    {
+      "run": 3,
+      "at": "2026-09-29T09:08:02.686Z",
+      "verdict": "REQUEST CHANGES",
+      "findings": [
+        {
+          "severity": "nit",
+          "category": "unused-timeout-knob",
+          "file": "agent/extensions/lib/exec.ts",
+          "line": 53,
+          "issue": "`timeoutMs` is exported and unit-tested but no call site ever passes it, so the 120s default applies identically to `wt list` and to `git push` (agent/extensions/git-commit/index.ts:130). A first push of a large branch over a slow link is killed at 120s and the user gets `git push failed with exit code 1: git timed out after 120000ms` with the commit left local. The kill itself is safe (git only updates the remote ref at the end), but for a local/path remote a killed `git push` can leave a stale pack temp or ref lock in the receiving repo, and the tool offers no way to give the one call that needs a longer bound a longer bound.",
+          "fix": "Pass a larger bound at the push call site, e.g. `run('git', pushArgs, { cwd, signal, timeoutMs: 600_000 })`, and keep 120_000 as the default for the read-only calls. No linter enforces this; the fix is the `timeoutMs` field that already exists on RunOptions.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "duplicated-error-detail",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 69,
+          "issue": "`ghFailure` re-implements the detail chain that `detailOf` (agent/extensions/lib/exec.ts:27) now owns, with a different placeholder ('(no output from gh)' vs '(no output)'), and the `git log` failure at index.ts:154 uses a third hand-rolled chain with no placeholder at all, so a silent `git log` failure renders `git log failed with exit code 1: ` with a dangling colon. The three tools now disagree on what an empty failure looks like.",
+          "fix": "No linter covers this. Use `detailOf(result)` at index.ts:69 and index.ts:154, or give `ghFailure` an explicit `empty` parameter so the one intentional difference (naming gh) is declared rather than duplicated. Add a case in tests/git-gh.test.ts driving a `git log` stub that exits non-zero silently and assert the result contains '(no output)'.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "wasted-precheck-spawn",
+          "file": "agent/extensions/git-worktree/index.ts",
+          "line": 136,
+          "issue": "The remove arm calls `loadWorktrees` (a `wt list` spawn) before checking `if (!branch)`, so every `remove` with no branch pays a child process for a call that is guaranteed to be rejected three lines later. tests/git-worktree.test.ts pins the wasted call by asserting `wt.callArgs()` equals `[['list','--format=json']]` for the no-branch case, so the ordering is now the tested contract.",
+          "fix": "No linter enforces this. Move the `if (!branch) return text(...)` check above `const loaded = await loadWorktrees(...)` and change that test to assert `wt.callArgs()).toEqual([])`.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "fragile-string-split",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 86,
+          "issue": "The push destination is derived by slicing `@{upstream}` at the first slash: `upstreamRemote = 'my'`, `upstreamRef = 'remote/main'` for an upstream string of `my/remote/main`. Git stores remote names as config section names, which may contain '/', so a remote named e.g. `company/prod` makes the tool push to a remote named `company` that does not exist. I could not create a repo to confirm the exact git behaviour here (read-only review), so treat the trigger as unconfirmed; the slicing itself is unambiguously ambiguous, and the same `indexOf('/')` heuristic also treats a local-tracking upstream (which has no slash) as no upstream. It fails safe: the push errors and the commit stays local.",
+          "fix": "Read the keys git itself uses instead of parsing the display string: `git config branch.<branch>.remote` for the remote and `git config branch.<branch>.merge` (`refs/heads/<name>`) for the ref. That also removes the `hasUpstream` slash heuristic. If the config lookup is added, cover it with a test repo whose remote name contains a slash.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "long-inline-ladder",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 96,
+          "issue": "The push-remote resolution ladder (upstream remote, then the `branch.*.pushRemote` / `remote.pushDefault` config loop, then origin, then the single-remote case, then two refusals) is roughly 30 lines inline in `execute`, which is now over 100 lines mixing staging, committing, branch discovery, remote resolution, confirm and push. The two sibling extensions keep this logic in a pure module (`worktrees.ts`, `ghops.ts`, `message.ts`) so it can be unit tested without PATH stubs; this ladder instead needs five live git repos in the test file. The extra blank line before the two `if (!remote ...)` rungs (105-108) is a symptom of the inline shape.",
+          "fix": "No linter enforces this. Extract `resolvePushRemote({ branch, upstreamRemote, remotes, configFor })` as a pure function in a new `agent/extensions/git-commit/push.ts` (or in message.ts) returning a discriminated result, keep the two refusals in index.ts, and build the priority as data: `[upstreamRemote, ...(remotes.includes('origin') ? ['origin'] : []), ...(remotes.length === 1 ? remotes : [])]`. That makes the ordering testable without git and removes the need for a comment to explain it.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "redundant-test-run",
+          "file": "mise.toml",
+          "line": 76,
+          "issue": "`mise run check` runs `{ task = \"test\" }` (all 21 files) and then `{ task = \"coverage\" }`, which re-runs tests/exec.test.ts, tests/git-commit.test.ts, tests/git-gh.test.ts and tests/git-worktree.test.ts a second time. Measured here: 12.5s for the full run plus the coverage run, so the four heaviest files execute twice per gate. This is the same finding as the previous two rounds and it is still open.",
+          "fix": "No linter or formatter rule covers task composition. Either give `tasks.test` the `--coverage` flag so the thresholds in vitest.config.ts apply to the whole suite and drop `tasks.coverage` from the list, or keep `tasks.coverage` as a separate manual task and remove it from `check`.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 181,
+          "issue": "`pr update` with a body and no title never runs at tool level. Coverage shows the cond-expr at 181 (`params.title !== undefined ? \\`Title: ${params.title}\\` : undefined`) with the alternate arm at count 0. The tool explicitly supports this shape - the guard at index.ts:178 accepts title OR body - and every tool-level test supplies a title (:254 supplies both, :267/:279/:288/:306/:320/:617 supply title only, :333 supplies neither). Editing only a PR description is a routine call, and the preview string built here is the only thing that tells the user, before a confirm-gated `gh pr edit`, exactly which field is about to change. I drove it against a stub gh: the dialog was `Pull request: current branch\\nBody:\\nnew desc` and gh received `pr edit --body new desc`, so the behaviour is correct, but inverting the arm (always emitting `Title: undefined`, or dropping the body line) would leave the suite fully green.",
+          "fix": "Add a tool-level test calling `{ operation: 'pr update', body: 'new desc' }` with a confirm spy that captures the dialog: assert the body contains `Body:\\nnew desc`, does not contain `Title:`, and that `gh.callArgs()` equals `[['pr','edit','--body','new desc']]`. Add the declined variant asserting `gh.calls()` is empty, mirroring the existing declined tests.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 74,
+          "issue": "`const branch = branchResult.ok ? branchResult.stdout.trim() : ''` collapses two different conditions, and the `!branch` arm then reports a detached HEAD. v8 shows the alternate arm at count 0: no test makes `git rev-parse --abbrev-ref HEAD` fail, so nothing pins what the tool says when git cannot report the branch. I drove it with a git stub that exits 3 for that one call: the tool returned `Committed:\\n...\\n\\nDetached HEAD; check out a branch before pushing. The commit stays local.` on a repo that is emphatically on branch `main` with a normal commit on it. The push correctly stays local (it fails safe), but the message sends the user to a detached-HEAD fix for a git failure. A test written against the current string would fail on the wording, which is the point: this is a zero-coverage path that only reads as correct because nobody drove it.",
+          "fix": "Add a tool-level test with a `git` stub that execs the real binary except for `rev-parse --abbrev-ref HEAD`, which exits non-zero. Assert the result does NOT say `Detached HEAD` (it should name the git failure), and change line 76 so the detached message is gated on `branch === 'HEAD'` alone, with a separate `Could not determine the current branch (...)` text for the empty case.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 66,
+          "issue": "The post-commit summary fallback `(params.message.split('\\n')[0] ?? params.message)` never runs: coverage reports the right-hand side at count 0, so no test makes `git log -1 --format=%H%n%s` fail after a successful `git commit`. I drove it with a git stub that exits 3 for `log`: the tool returned `Committed:\\nfeat: add b` using the message's own first line, which is the right behaviour, so this is a gap. It matters because the two sources can disagree - a commit-msg hook that rewrites the subject would make the fallback print something the user never committed, and no test distinguishes the two.",
+          "fix": "Add a test that stubs `git` to fail only for `log`, commits with a multi-line message, and asserts the result starts with `Committed:\\nfeat: add b` and still reports the advisory hints.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 107,
+          "issue": "Two error-detail chains in git-gh still inline what `detailOf` now centralises, and only their first arm is exercised. Coverage: line 107 (`human.stderr.trim() || human.stdout.trim() || '(no output from gh)'`) reports [1, 0, 0] and line 154 (`log.stderr.trim() || log.stdout.trim()`) reports [1, 0]. I drove both gaps and the behaviour is right - a logged-out gh whose message lands on stdout yields `gh is not authenticated:\\nYou are not logged in (stdout only)`, and a silent failure yields `gh is not authenticated:\\n(no output from gh)`. The prior round reported the same pattern across eight sites; three tools are now fixed via `detailOf` and these two inlines were left behind, so the remaining two are the stragglers.",
+          "fix": "Use `detailOf(human)` at line 107 and `detailOf(log)` at line 154. `detailOf` is already unit-tested for all three arms in tests/exec.test.ts, so this deletes the two untested chains instead of adding tests for them.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "uncovered-fallback",
+          "file": "agent/extensions/git-gh/ghops.ts",
+          "line": 182,
+          "issue": "`if (pr.headRefName || pr.baseRefName) lines.push(`${pr.headRefName ?? '?'} -> ${pr.baseRefName ?? '?'}`)` never renders a `?`. Coverage reports the `baseRefName ?? '?'` arm at count 0, and the `formatPrView` fallback test (tests/git-gh.test.ts:886) only omits both refs, which skips the line entirely. gh omits `baseRefName` in practice for cross-fork PRs where the base is deleted, so this arm is reachable. I drove it: a PrView with `headRefName: 'feat'` and no base renders `feat -> ?` correctly.",
+          "fix": "Add one case to the existing `formatPrView` fallback test parsing `{\"number\":3,\"title\":\"t\",\"headRefName\":\"feat\"}` and assert the rendered output contains `feat -> ?`.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "uncovered-fallback",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 192,
+          "issue": "All three operation dispatch switches (git-gh index.ts:192, git-worktree index.ts, git-commit's if/else) have no `default` case, so an operation outside the TypeBox union makes `execute` return `undefined` rather than a tool result. No test pins this. I drove it: `{ operation: 'nope' }` on the worktree tool returned `undefined` (my harness rendered `<<UNDEFINED RESULT: undefined>>`), not a text result. pi does validate tool arguments before `execute`, so the branch is currently unreachable, but every other failure mode in these three tools degrades to a text result and this one does not, and nothing would catch it if that validation changed or a new operation were added to the schema without a switch arm.",
+          "fix": "Add a `default:` arm to each switch returning `text(`Unknown operation: ${params.operation}.`)` and one test per tool calling an out-of-union operation and asserting the text. Alternatively add a test that asserts `execute` returns `undefined` today, so the behaviour is at least pinned rather than accidental.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "unreachable-defensive-code",
+          "file": "agent/extensions/git-commit/message.ts",
+          "line": 25,
+          "issue": "Seven zero-count branch arms in the diff are unreachable defensive fallbacks that no test can cover, which is why branch coverage sits at 96.69% and not 100%: message.ts:25 `summary.trim().split(/\\s+/)[0] ?? ''` (split always returns at least one string), message.ts:31 `subject.split('\\n')[0] ?? ''`, message.ts:39/40 `match[1] ?? ''` and `match[2] ?? ''` (both groups are required by the regex), ghops.ts:132 `lines[0] ?? ''` (chunk is filtered non-empty before the split), git-commit/index.ts:107 `remotes[0] ?? ''` (guarded by `remotes.length === 1`), and exec.ts:59/60 `typeof stdout === 'string' ? stdout : ''` (the ternary exists only to narrow Buffer). Every one of them is forced by `noUncheckedIndexedAccess` or the `ExecFileOptions` overload, so the honest options are to delete the redundant half or to stop counting them.",
+          "fix": "Where the invariant is provable at the same line, drop the `?? ''` and let `noUncheckedIndexedAccess` stay satisfied by the preceding filter (ghops.ts:132 already has one). For exec.ts:59/60, use `String(stdout)` instead of the typeof ternary. If the rest stay, note them in a comment next to the perFile thresholds so a future reader does not chase them as gaps. A CI rule is not warranted here; these are compiler-driven, not style.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "comment-nit",
+          "file": "tests/helpers.ts",
+          "line": 105,
+          "issue": "\"// Arguments are NUL-terminated and each call ends with an empty NUL field, so // argument boundaries survive any byte an argument can contain.\" The protocol is entirely our own: the writer is `stubOnPath` at :133-135 (`printf '%s\\000' \"$@\" ... printf '\\000'`) in this same file. It also restates the loop immediately below (`for (const field of raw.split('\\0'))` with the empty-field case pushing `current`), so the format is legible from the code without prose. Keep-list item 2 does not apply (own code, not a vendor wire format) and item 4 does not apply (`readCallArgs` is module-private, no external caller depends on the framing), so the justification is close to the mustKill bar. It survives only because the comment records the one thing the literals do not state: that the choice of NUL over newline exists so an argument containing a newline cannot forge a call boundary.",
+          "fix": "delete - if the anti-forgery rationale is wanted, the fix is to make the writer/reader contract structural rather than narrated: have `stubOnPath` write one JSON array per line (`printf '%s\\n' \"$@\"` style is not enough, so push each argv vector through a length-prefixed or JSON-encoded frame) and drop `readCallArgs`' manual `split('\\0')` loop for a `JSON.parse` per line, which removes the need for the note entirely.",
+          "agents": ["comment-auditor"]
+        }
+      ]
     }
   ]
 }

@@ -72,20 +72,23 @@ export default function (pi: ExtensionAPI) {
 
       const branchResult = await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, signal })
       const branch = branchResult.ok ? branchResult.stdout.trim() : ''
-      if (!branch || branch === 'HEAD') {
+      if (branch === 'HEAD') {
         return text(
           `Committed:\n${summary}${hintText}\n\nDetached HEAD; check out a branch before pushing. The commit stays local.`,
         )
       }
-      const upstreamResult = await run('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], {
-        cwd,
-        signal,
-      })
-      const hasUpstream = upstreamResult.ok && upstreamResult.stdout.trim().includes('/')
-      const upstreamFull = hasUpstream ? upstreamResult.stdout.trim() : ''
-      const upstreamSlash = upstreamFull.indexOf('/')
-      const upstreamRemote = hasUpstream ? upstreamFull.slice(0, upstreamSlash) : ''
-      const upstreamRef = hasUpstream ? upstreamFull.slice(upstreamSlash + 1) : ''
+      if (!branch) {
+        return text(
+          `Committed:\n${summary}${hintText}\n\nCould not determine the current branch (${detailOf(branchResult)}). The commit stays local.`,
+        )
+      }
+      const remoteConfig = await run('git', ['config', `branch.${branch}.remote`], { cwd, signal })
+      const mergeConfig = await run('git', ['config', `branch.${branch}.merge`], { cwd, signal })
+      const configuredRemote = remoteConfig.ok ? remoteConfig.stdout.trim() : ''
+      const mergeRef = mergeConfig.ok ? mergeConfig.stdout.trim() : ''
+      const hasUpstream = configuredRemote.length > 0 && mergeRef.startsWith('refs/heads/')
+      const upstreamRemote = hasUpstream ? configuredRemote : ''
+      const upstreamRef = hasUpstream ? mergeRef.slice('refs/heads/'.length) : ''
       const remotesResult = await run('git', ['remote'], { cwd, signal })
       const remotes = remotesResult.ok
         ? remotesResult.stdout
@@ -127,7 +130,7 @@ export default function (pi: ExtensionAPI) {
       const pushArgs = hasUpstream
         ? ['push', remote, `HEAD:${upstreamRef}`]
         : ['push', '--set-upstream', remote, branch]
-      const push = await run('git', pushArgs, { cwd, signal })
+      const push = await run('git', pushArgs, { cwd, signal, timeoutMs: 600_000 })
       if (push.missing) return text(`git (not found on PATH): ${push.stderr.trim()}`)
       if (!push.ok) {
         return text(

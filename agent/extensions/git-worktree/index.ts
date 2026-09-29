@@ -133,14 +133,14 @@ export default function (pi: ExtensionAPI) {
         }
 
         case 'remove': {
-          const loaded = await loadWorktrees(cwd, signal)
-          if (!loaded.ok) return text(loaded.error)
           const branch = requestedBranch
           if (!branch) {
             return text(
               'worktree remove requires a branch name; the current worktree is never removable from inside it.',
             )
           }
+          const loaded = await loadWorktrees(cwd, signal)
+          if (!loaded.ok) return text(loaded.error)
           const target = findByBranch(loaded.envelope, branch)
           const resolvedTarget = target ? realPath(target.path) : ''
           const resolvedCwd = realPath(cwd)
@@ -179,6 +179,9 @@ export default function (pi: ExtensionAPI) {
               : `wt removed the worktree for ${branch}; run operation "list" to see the current state.`,
           )
         }
+
+        default:
+          return text(`Unknown operation: ${params.operation}.`)
       }
     },
   })

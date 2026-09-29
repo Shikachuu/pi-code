@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-import { run, truncateOutput, type RunResult } from '../lib/exec.ts'
+import { detailOf, run, truncateOutput, type RunResult } from '../lib/exec.ts'
 import {
   authArgs,
   buildPrBody,
@@ -66,8 +66,8 @@ async function resolveBase(
 
 function ghFailure(command: string, result: RunResult): string {
   if (result.missing) return `gh (not found on PATH): ${result.stderr.trim()}`
-  const detail = result.stderr.trim() || result.stdout.trim() || '(no output from gh)'
-  return `${command} failed with exit code ${result.code}: ${detail}`
+  const detail = detailOf(result)
+  return `${command} failed with exit code ${result.code}: ${detail === '(no output)' ? '(no output from gh)' : detail}`
 }
 
 export default function (pi: ExtensionAPI) {
@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
           if (human.missing) return text(ghFailure('gh auth status', human))
           if (human.ok) return text(human.stdout.trim() || 'gh is authenticated.')
           return text(
-            `gh is not authenticated:\n${human.stderr.trim() || human.stdout.trim() || '(no output from gh)'}`,
+            `gh is not authenticated:\n${detailOf(human) === '(no output)' ? '(no output from gh)' : detailOf(human)}`,
           )
         }
 
@@ -150,8 +150,9 @@ export default function (pi: ExtensionAPI) {
           const base = resolved.base
           const log = await run('git', gitLogArgs(resolved.gitRef), { cwd, signal })
           if (log.missing) return text(`git (not found on PATH): ${log.stderr.trim()}`)
-          if (!log.ok)
-            return text(`git log failed with exit code ${log.code}: ${log.stderr.trim() || log.stdout.trim()}`)
+          if (!log.ok) {
+            return text(`git log failed with exit code ${log.code}: ${truncateOutput(detailOf(log), 20)}`)
+          }
           const commits = parseCommits(log.stdout)
           const oldestSubject = commits.at(-1)?.subject
           const title = params.title ?? oldestSubject
@@ -189,6 +190,9 @@ export default function (pi: ExtensionAPI) {
           if (!result.ok) return text(ghFailure('gh pr edit', result))
           return text(result.stdout.trim() || 'Pull request updated.')
         }
+
+        default:
+          return text(`Unknown operation: ${params.operation}.`)
       }
     },
   })

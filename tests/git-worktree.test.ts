@@ -81,6 +81,11 @@ function stubList(json: unknown) {
   return stubOnPath('wt', `if [ "$1" = "list" ]; then printf '%s' ${shellQuote(JSON.stringify(json))}; fi\nexit 0`)
 }
 
+test('worktree reports an unknown operation', async () => {
+  const result = await loadTool().execute('id', { operation: 'nope' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/Unknown operation: nope/)
+})
+
 test('registers the worktree tool with a prompt snippet', () => {
   const tool = loadTool()
   expect(tool.name).toBe('worktree')
@@ -417,7 +422,7 @@ test('worktree remove requires a branch name', async () => {
   const wt = stubList({ schema: 2, items: [{ worktree: { path: '/wt/x', current: true } }] })
   const result = await loadTool().execute('id', { operation: 'remove' }, undefined, undefined, ctx())
   expect(resultText(result)).toMatch(/requires a branch name/)
-  expect(wt.callArgs()).toEqual([['list', '--format=json']])
+  expect(wt.callArgs()).toEqual([])
 })
 
 test('worktree remove confirms an unknown branch with the bare name', async () => {

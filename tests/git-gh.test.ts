@@ -326,6 +326,53 @@ test('a declined pr update with no target never executes gh', async () => {
   expect(gh.calls()).toEqual([])
 })
 
+test('pr update with a body and no title previews the body only', async () => {
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "edit" ]; then printf '%s\\n' 'https://github.com/o/r/pull/8'; exit 0; fi\nexit 1`,
+  )
+  let confirmBody = ''
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd: process.cwd(),
+    hasUI: true,
+    ui: {
+      confirm: async (_title: string, message: string) => {
+        confirmBody = message
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', body: 'new desc' },
+    undefined,
+    undefined,
+    capturingCtx,
+  )
+  expect(confirmBody).toContain('Body:\nnew desc')
+  expect(confirmBody).not.toContain('Title:')
+  expect(gh.callArgs()).toEqual([['pr', 'edit', '--body', 'new desc']])
+  expect(resultText(result)).toContain('https://github.com/o/r/pull/8')
+})
+
+test('a declined pr update with a body only never executes gh', async () => {
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr update', body: 'new desc' },
+    undefined,
+    undefined,
+    ctx(process.cwd(), false),
+  )
+  expect(resultText(result)).toMatch(/not updated/i)
+  expect(gh.calls()).toEqual([])
+})
+
+test('gh reports an unknown operation', async () => {
+  const result = await loadTool().execute('id', { operation: 'nope' }, undefined, undefined, ctx(process.cwd()))
+  expect(resultText(result)).toMatch(/Unknown operation: nope/)
+})
+
 test('pr update needs a title or body and never calls gh', async () => {
   const gh = stubGh('exit 1')
   const result = await loadTool().execute(
@@ -410,6 +457,25 @@ test('pr create reports the placeholder and raw stdout on a silent success', asy
     ctx(cwd2, true),
   )
   expect(resultText(echo)).toBe('no link here')
+})
+
+test('pr create surfaces a git log failure that only writes stdout', async () => {
+  const cwd = initRepo()
+  const realGit = which('git')
+  stubOnPath(
+    'git',
+    `if [ "$1" = "log" ]; then printf '%s\\n' "log stdout"; exit 1; fi\nexec ${shellQuote(realGit)} "$@"`,
+  )
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toContain('log stdout')
+  expect(gh.calls()).toEqual([])
 })
 
 test('pr create needs a base branch when neither main nor master exists', async () => {
@@ -839,7 +905,6 @@ test('parseAuthHosts and parseRepoView reject malformed objects', () => {
   expect(parseAuthHosts(JSON.stringify([]))).toBeUndefined()
   expect(parseAuthHosts(JSON.stringify({ hosts: 'nope' }))).toBeUndefined()
   expect(parseRepoView(JSON.stringify([]))).toBeUndefined()
-  expect(formatPrView(must(parsePrView(JSON.stringify({ headRefName: 'x' })), 'pr'))).toContain('x -> ?')
 })
 
 test('parseAuthHosts handles the hosts envelope and rejects junk', () => {
@@ -886,6 +951,9 @@ test('git log output round-trips through gitLogArgs and parseCommits', () => {
 test('formatPrView, summarizeChecks and formatRepoView cover their fallbacks', () => {
   expect(formatPrView(must(parsePrView('{}'), 'pr'))).toBe('#? (untitled)')
   expect(formatPrView(must(parsePrView(JSON.stringify({ headRefName: 'x' })), 'pr'))).toContain('x -> ?')
+  expect(
+    formatPrView(must(parsePrView(JSON.stringify({ number: 3, title: 't', headRefName: 'feat' })), 'pr')),
+  ).toContain('feat -> ?')
   const checks = must(parseChecks(JSON.stringify([{}])), 'checks')
   expect(summarizeChecks(checks)).toContain('unknown (unnamed)')
   const repo = must(
@@ -923,6 +991,7 @@ test('arg builders pin the exact JSON field lists', () => {
     '--base',
     'main',
   ])
+  expect(prCreateArgs({ title: 't', body: 'b' })).toEqual(['pr', 'create', '--title', 't', '--body', 'b'])
   expect(prEditArgs('12', { title: 't' })).toEqual(['pr', 'edit', '12', '--title', 't'])
   expect(prEditArgs(undefined, { body: 'b' })).toEqual(['pr', 'edit', '--body', 'b'])
   expect(gitLogArgs('main')).toContain('main..HEAD')
