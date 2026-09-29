@@ -470,6 +470,94 @@
           "agents": ["comment-auditor"]
         }
       ]
+    },
+    {
+      "run": 4,
+      "at": "2026-09-29T10:27:25.051Z",
+      "verdict": "APPROVE",
+      "findings": [
+        {
+          "severity": "nit",
+          "category": "unbounded-error-detail",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 69,
+          "issue": "`ghFailure` embeds `detailOf(result)` (raw stderr, then stdout) with no bound, and `loadWorktrees` in agent/extensions/git-worktree/index.ts:44 does the same. `run` accepts up to MAX_BUFFER (10MB) of child output per stream, so a verbose failure dumps an arbitrarily large block straight into the model context, while agent/extensions/git-commit/index.ts:25,63,131 consistently wraps the same text in `truncateOutput(detailOf(...), 20)`. The three tools disagree on how much failure text the model sees.",
+          "fix": "Wrap both sites in `truncateOutput(detailOf(result), 20)` (already imported in git-gh; add the import in git-worktree) so error text is bounded the same way as in git-commit. No linter covers this.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "duplicated-error-detail",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 70,
+          "issue": "The `detail === '(no output)' ? '(no output from gh)' : detail` rewrite appears twice in this file (line 70 inside `ghFailure`, line 107 in the not-authenticated branch), both keying off `detailOf`'s literal placeholder. The third copy in the `git log` handler is gone, so this is the remaining duplication, and a reader has to diff two string literals to know the placeholder is meant to be the same text.",
+          "fix": "No linter or formatter rule covers this. Hoist it once, e.g. `const ghDetail = (r: RunResult) => { const d = detailOf(r); return d === '(no output)' ? '(no output from gh)' : d }` next to `ghFailure`, and use it at lines 70 and 107.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "duplicated-remote-parsing",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 92,
+          "issue": "The `git remote` output parsing block (split on newline, trim, filter Boolean, fall back to `[]` on failure) is copy-pasted verbatim at agent/extensions/git-gh/index.ts:48. The two tools must stay in step on how a remote list is read, and a future fix (remote names with odd whitespace, `git remote` gaining flags) has to land twice.",
+          "fix": "No linter rule covers this. Export a `parseRemotes(result: RunResult): string[]` from agent/extensions/lib/exec.ts (already the shared module for both) and call it from both sites.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "long-inline-ladder",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 99,
+          "issue": "The push-target resolution (upstream remote, then the `branch.*.pushRemote` / `remote.pushDefault` loop, then origin, then the single-remote case, then two refusals, then destination/headless/confirm/push) is ~40 lines inline in `execute`, which now mixes staging, committing, branch discovery, remote resolution, confirm and push in one 100-line closure. The sibling extensions keep this logic in pure modules (`worktrees.ts`, `ghops.ts`, `message.ts`) that are unit-tested without PATH stubs or real git repos; this ladder is only testable with five live repos, which is why the suite needs `repoWithRemote`, `repoWithMismatchedUpstream`, two solo-remote fixtures and a two-remote fixture.",
+          "fix": "No linter enforces this. Extract `resolvePushRemote({ branch, upstreamRemote, remotes, configFor })` into a pure function (new agent/extensions/git-commit/push.ts, or message.ts) returning a discriminated result, keep the two refusals in index.ts, and build the priority as data: `[upstreamRemote, ...(remotes.includes('origin') ? ['origin'] : []), ...(remotes.length === 1 ? remotes : [])]`.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "redundant-test-run",
+          "file": "mise.toml",
+          "line": 75,
+          "issue": "`tasks.check` runs `{ task = \"test\" }` (all 21 files) and then `{ task = \"coverage\" }`, which re-executes tests/exec.test.ts, tests/git-commit.test.ts, tests/git-gh.test.ts and tests/git-worktree.test.ts a second time. The four heaviest files in the repo run twice per gate. This is the same finding as the previous review rounds and it is still open.",
+          "fix": "No linter or formatter rule covers task composition. Collapse it: vitest.config.ts already scopes `coverage.include` to the seven git-tool modules, so `tasks.test` can be `npx vitest run --coverage` and `{ task = \"coverage\" }` can be dropped from `check` (keep `tasks.coverage` as a fast manual subset if it is useful).",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 107,
+          "issue": "The `'(no output from gh)'` arm of the not-authenticated message has count 0 in the v8 report (cond-expr at 107, locations 107:77 / 107:101, counts [0,1]): no test makes the `gh auth status` human fallback fail with no stderr AND no stdout. The existing test 'a silent gh failure reports the no-output placeholder' (tests/git-gh.test.ts:835) drives `pr view`, which goes through `ghFailure` at index.ts:69, not this line, and the three auth tests (tests/git-gh.test.ts:175, :210, :242) all produce output on the human call. I drove it: a gh stub serving `{\"hosts\":{}}` for `--json` then exiting 1 silently returns `gh is not authenticated:\\n(no output from gh)`, so the behaviour is correct; it is a zero-coverage arm of a confirm-independent error string that nothing would catch if the ternary were inverted.",
+          "fix": "Add a tool-level test with a gh stub that returns `{\"hosts\":{}}` for `auth status --json hosts` and then exits 1 with no output for the human `auth status` call; assert the result is exactly `gh is not authenticated:\\n(no output from gh)`. Add the companion case that writes only to stdout and assert that line is surfaced, mirroring the pair already pinned for `ghFailure` at tests/git-gh.test.ts:835.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "uncovered-fallback",
+          "file": "agent/extensions/git-gh/ghops.ts",
+          "line": 182,
+          "issue": "`${pr.headRefName ?? '?'}` never renders its `?`. The coverage entry at 182 is the pair of `??` fallbacks on this line and the headRefName one is the dead arm: the fallback test (tests/git-gh.test.ts:951) only covers a missing baseRefName (`x -> ?`, `feat -> ?`), so the reverse shape - a PrView carrying `baseRefName` but no `headRefName` - is never rendered. That shape is reachable from real `gh pr view` output for a PR whose head branch has been deleted. I drove it: `formatPrView(parsePrView('{\"baseRefName\":\"main\"}'))` renders `? -> main` correctly, so this is a gap, not a bug.",
+          "fix": "Extend the existing `formatPrView` fallback test with `formatPrView(must(parsePrView('{\"baseRefName\":\"main\"}'), 'pr'))` and assert the output contains `? -> main`, so both placeholder arms of the arrow line are pinned.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "unreachable-defensive-code",
+          "file": "agent/extensions/git-commit/message.ts",
+          "line": 25,
+          "issue": "Eight zero-count branch arms are provably dead, all forced by `noUncheckedIndexedAccess` or by the `ExecFileOptions` overload rather than by a reachable input: message.ts:25 `split(/\\s+/)[0] ?? ''` and :31 `split('\\n')[0] ?? ''` (split always yields at least one element), message.ts:39/40 `match[1] ?? ''` and `match[2] ?? ''` (both groups are required by the regex), ghops.ts:132 `lines[0] ?? ''` (the chunk is filtered non-empty first), git-commit/index.ts:66 `params.message.split('\\n')[0] ?? params.message` and :110 `remotes[0] ?? ''` (guarded by `remotes.length === 1`), and exec.ts:59/60 `typeof stdout === 'string' ? stdout : ''`. This is what holds branch coverage at 97.66% rather than 100%, and it puts message.ts at 81.81% against the perFile branch threshold of 80 in vitest.config.ts:11 - one more `?? ''` anywhere in message.ts breaks `mise run coverage`.",
+          "fix": "Where the invariant is provable at the same line, drop the redundant half: `String(stdout)` replaces the exec.ts:59/60 ternary, and ghops.ts:132 already shows the filter-then-index shape that satisfies `noUncheckedIndexedAccess` without the fallback. For whatever must stay, record them in a short comment next to the perFile thresholds in vitest.config.ts so the next engineer does not chase them as gaps. A lint rule is not warranted; these are compiler-driven, not style.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "weak-assertion",
+          "file": "tests/git-gh.test.ts",
+          "line": 901,
+          "issue": "`expect(gh.calls().length).toBeGreaterThan(0)` asserts only that gh was invoked at all - it pins neither the argv nor the result, so the test would still pass if `pr view` were called with the wrong target or dropped `--json`. The first half of the same test (the `repo view` case, :888-899) stubs gh a second time and asserts nothing about its calls at all, so `repo view`'s argv has no assertion in this test. Everything else in this file pins argv with `callArgs()` (e.g. :617, :668), so this one line is the outlier. The test also covers two operations in one body.",
+          "fix": "Replace the count assertion with `expect(gh.callArgs()).toEqual([['pr', 'view', '--json', PR_VIEW_FIELDS.join(',')]])` and add the equivalent for the repo-view stub, or split the repo-view and pr-view cases into one test each as the rest of the file does.",
+          "agents": ["test-engineer"]
+        }
+      ]
     }
   ]
 }
