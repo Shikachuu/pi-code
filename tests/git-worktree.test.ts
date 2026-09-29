@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -113,6 +113,39 @@ test('worktree create pre-checks for an existing worktree and does not switch', 
   const result = await loadTool().execute('id', { operation: 'create', branch: 'feature' }, undefined, undefined, ctx())
   expect(resultText(result)).toMatch(/already has a worktree/)
   expect(wt.calls().some((call) => call.includes('switch'))).toBe(false)
+})
+
+test('worktree switch reports a missing wt binary', async () => {
+  restrictPath(emptyPathDir())
+  const result = await loadTool().execute('id', { operation: 'switch', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/wt \(not found on PATH\)/)
+})
+
+test('worktree remove reports a missing wt binary after the pre-check', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wt-only-'))
+  restrictPath(dir)
+  const file = join(dir, 'wt')
+  writeFileSync(
+    file,
+    `#!/bin/sh\nif [ "$1" = "list" ]; then printf '%s' ${shellQuote(JSON.stringify({ schema: 2, items: [{ branch: 'feature', worktree: { path: '/wt/feature', current: true } }] }))}; /bin/rm -f "$0"; exit 0; fi\nexit 0\n`,
+  )
+  chmodSync(file, 0o755)
+  const result = await loadTool().execute('id', { operation: 'remove', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/wt \(not found on PATH\)/)
+})
+
+test('worktree rejects a branch name that looks like a flag', async () => {
+  const wt = stubList(ENVELOPE)
+  const result = await loadTool().execute('id', { operation: 'remove', branch: '-D' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/must not start with/)
+  expect(wt.callArgs()).toEqual([])
+})
+
+test('worktree remove surfaces a non-zero pre-check list failure', async () => {
+  const wt = stubOnPath('wt', 'printf "%s\\n" "list failed" >&2\nexit 4')
+  const result = await loadTool().execute('id', { operation: 'remove', branch: 'feature' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/wt list failed with exit code 4/)
+  expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
 
 test('worktree create runs wt switch -c with --no-cd for a new branch', async () => {

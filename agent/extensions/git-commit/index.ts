@@ -73,7 +73,12 @@ export default function (pi: ExtensionAPI) {
       if (!params.push) return text(`Committed:\n${summary}${hintText}`)
 
       const branchResult = await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, signal })
-      const branch = branchResult.ok ? branchResult.stdout.trim() : '(unknown)'
+      const branch = branchResult.ok ? branchResult.stdout.trim() : ''
+      if (!branch || branch === 'HEAD') {
+        return text(
+          `Committed:\n${summary}${hintText}\n\nDetached HEAD; check out a branch before pushing. The commit stays local.`,
+        )
+      }
       const upstreamResult = await run('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], {
         cwd,
         signal,
@@ -83,10 +88,30 @@ export default function (pi: ExtensionAPI) {
       const upstreamSlash = upstreamFull.indexOf('/')
       const upstreamRemote = hasUpstream ? upstreamFull.slice(0, upstreamSlash) : ''
       const upstreamRef = hasUpstream ? upstreamFull.slice(upstreamSlash + 1) : ''
+      const remotesResult = await run('git', ['remote'], { cwd, signal })
+      const remotes = remotesResult.ok
+        ? remotesResult.stdout
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+        : []
       let remote = upstreamRemote
       if (!remote) {
-        const remoteResult = await run('git', ['remote'], { cwd, signal })
-        remote = remoteResult.ok ? (remoteResult.stdout.split('\n').find((line) => line.trim()) ?? '').trim() : ''
+        for (const key of [`branch.${branch}.pushRemote`, 'remote.pushDefault']) {
+          const config = await run('git', ['config', key], { cwd, signal })
+          if (config.ok && config.stdout.trim()) {
+            remote = config.stdout.trim()
+            break
+          }
+        }
+      }
+      // Match git's own default: prefer origin, then a single configured remote.
+      if (!remote && remotes.includes('origin')) remote = 'origin'
+      if (!remote && remotes.length === 1) remote = remotes[0] ?? ''
+      if (!remote && remotes.length > 1) {
+        return text(
+          `Committed:\n${summary}${hintText}\n\nMultiple git remotes (${remotes.join(', ')}) with no upstream for ${branch}. Set branch.${branch}.pushRemote or remote.pushDefault, or push manually. The commit stays local.`,
+        )
       }
       if (!remote) {
         return text(`Committed:\n${summary}${hintText}\n\nNo git remote is configured, so nothing was pushed.`)

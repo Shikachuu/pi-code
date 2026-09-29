@@ -97,23 +97,21 @@ export interface Stub {
 export interface StubOnPath extends Stub {
   dir: string
   logPath: string
-  /** Each recorded call as its own argument array, so argv corruption is visible. */
   callArgs(): string[][]
 }
 
 const pathStubs: Stub[] = []
 
-const ARG_SEPARATOR = String.fromCharCode(30)
+const ARG_FIELD_SEPARATOR = '\x1e'
+const CALL_SEPARATOR = '\0'
 
-// Argument separator is ASCII 0x1e and call separator is NUL, so a logged call
-// keeps its argument boundaries even when an argument contains a newline.
 function readCallArgs(path: string): string[][] {
   try {
     return readFileSync(path, 'utf8')
-      .split('\0')
+      .split(CALL_SEPARATOR)
       .filter((record) => record.length > 0)
       .map((record) => {
-        const parts = record.split(ARG_SEPARATOR)
+        const parts = record.split(ARG_FIELD_SEPARATOR)
         if (parts[parts.length - 1] === '') parts.pop()
         return parts
       })
@@ -128,7 +126,7 @@ export function stubOnPath(name: string, script: string): StubOnPath {
   const file = join(dir, name)
   writeFileSync(
     file,
-    `#!/bin/sh\nprintf '%s${ARG_SEPARATOR}' "$@" >> ${shellQuote(logPath)}\nprintf '\\000' >> ${shellQuote(logPath)}\n${script}\n`,
+    `#!/bin/sh\nprintf '%s${ARG_FIELD_SEPARATOR}' "$@" >> ${shellQuote(logPath)}\nprintf '\\000' >> ${shellQuote(logPath)}\n${script}\n`,
   )
   chmodSync(file, 0o755)
   const previous = process.env.PATH ?? ''

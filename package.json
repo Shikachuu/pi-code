@@ -12,6 +12,7 @@
     "@earendil-works/pi-coding-agent": "0.87.0",
     "@earendil-works/pi-tui": "0.87.0",
     "@types/node": "24.13.6",
+    "@vitest/coverage-v8": "5.0.2",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
     "typescript": "7.0.2",

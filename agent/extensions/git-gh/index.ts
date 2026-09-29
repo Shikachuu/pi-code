@@ -78,6 +78,9 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, signal, _onUpdate, ctx) {
       const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }], details: {} })
       const cwd = ctx.cwd
+      if (params.target?.startsWith('-') || params.base?.startsWith('-')) {
+        return text('target and base must not start with "-".')
+      }
 
       switch (params.operation) {
         case 'auth': {
@@ -140,6 +143,7 @@ export default function (pi: ExtensionAPI) {
           if (!log.ok)
             return text(`git log failed with exit code ${log.code}: ${log.stderr.trim() || log.stdout.trim()}`)
           const commits = parseCommits(log.stdout)
+          // Oldest commit ahead of the base, matching `gh pr create --fill`.
           const title = params.title ?? commits.at(-1)?.subject
           if (!title) return text('pr create needs a title; no local commits ahead of the base were found.')
           const body = params.body ?? buildPrBody(commits)

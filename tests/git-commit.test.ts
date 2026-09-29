@@ -47,6 +47,7 @@ function initRepo(): string {
   git(cwd, ['config', 'user.email', 't@t.com'])
   git(cwd, ['config', 'user.name', 't'])
   git(cwd, ['config', 'commit.gpgsign', 'false'])
+  git(cwd, ['config', 'core.hooksPath', join(cwd, '.git', 'hooks')])
   writeFileSync(join(cwd, 'a.txt'), 'a\n')
   git(cwd, ['add', 'a.txt'])
   git(cwd, ['commit', '-m', 'init'])
@@ -275,6 +276,26 @@ test('a rejected push surfaces the failure and keeps the commit local', async ()
   expect(git(cwd, ['rev-list', '--count', 'origin/main..HEAD'])).toBe('1')
 })
 
+test('push reports a missing git binary', async () => {
+  const cwd = repoWithRemote()
+  git(cwd, ['push', '--set-upstream', 'origin', 'feature'])
+  stage(cwd, 'b.txt', 'b\n')
+  const realGit = which('git')
+  restrictPath(mkdtempSync(join(tmpdir(), 'no-git-')))
+  stubOnPath(
+    'git',
+    `if [ "$4" = "@{upstream}" ]; then /bin/rm -f "$0"; printf '%s\\n' "origin/feature"; exit 0; fi\nexec ${shellQuote(realGit)} "$@"`,
+  )
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/git \(not found on PATH\)/)
+})
+
 test('push with no remote leaves the commit local', async () => {
   const cwd = initRepo()
   stage(cwd, 'a.txt', 'a\nmore\n')
@@ -397,23 +418,48 @@ test('commit falls back to the message subject when git log fails', async () => 
   expect(resultText(result)).toMatch(/Committed:\nfeat: add more/)
 })
 
-test('a failing rev-parse reports the branch as unknown in the push prompt', async () => {
+test('a detached HEAD with push true reports it and never prompts', async () => {
   const cwd = repoWithRemote()
   stage(cwd, 'b.txt', 'b\n')
-  const realGit = which('git')
-  stubOnPath('git', `if [ "$1" = "rev-parse" ]; then exit 1; fi\nexec ${shellQuote(realGit)} "$@"`)
-  let confirmMessage = ''
+  git(cwd, ['checkout', '--detach'])
+  let prompted = false
   const capturingCtx = asMock<ExtensionContext>({
     cwd,
     hasUI: true,
     ui: {
-      confirm: async (_title: string, message: string) => {
-        confirmMessage = message
+      confirm: async () => {
+        prompted = true
         return false
       },
       notify: () => {},
     },
   })
-  await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, capturingCtx)
-  expect(confirmMessage).toContain('(unknown)')
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    capturingCtx,
+  )
+  expect(resultText(result)).toMatch(/Detached HEAD/)
+  expect(prompted).toBe(false)
+  expect(() => git(cwd, ['rev-parse', '--verify', 'origin/feature'])).toThrow(/revision/i)
+})
+
+test('push without an upstream prefers origin over the first remote', async () => {
+  const cwd = repoWithRemote()
+  const fork = mkdtempSync(join(tmpdir(), 'commit-fork-'))
+  git(fork, ['init', '--bare'])
+  git(cwd, ['remote', 'add', 'fork', fork])
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(stub.pushes()).toEqual([['push', '--set-upstream', 'origin', 'feature']])
+  expect(resultText(result)).toContain('origin')
 })

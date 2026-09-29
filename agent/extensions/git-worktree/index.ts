@@ -81,6 +81,7 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, signal, _onUpdate, ctx) {
       const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }], details: {} })
       const cwd = ctx.cwd
+      if (params.branch?.startsWith('-')) return text('worktree branch must not start with "-".')
 
       switch (params.operation) {
         case 'list': {

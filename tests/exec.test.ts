@@ -79,5 +79,6 @@ test('truncateOutput keeps the tail and pins the notice', () => {
 
 test('truncateOutput names the byte limit when a long line is cut', () => {
   const out = truncateOutput(`a\n${'x'.repeat(60_000)}\nb`)
-  expect(out).toContain('truncated to')
+  expect(out).toMatch(/\[\.\.\. truncated to .+; showing the last \d+ of 3 lines\]/)
+  expect(out).not.toContain('undefined')
 })

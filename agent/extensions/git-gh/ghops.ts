@@ -215,11 +215,15 @@ function isPending(check: Check): boolean {
   )
 }
 
+function isPassing(check: Check): boolean {
+  return check.bucket === 'pass' || check.state === 'SUCCESS' || check.state === 'NEUTRAL'
+}
+
 export function summarizeChecks(checks: Check[]): string {
   if (checks.length === 0) return 'No checks reported for this pull request.'
   const failing = checks.filter(isFailing).length
   const pending = checks.filter(isPending).length
-  const passing = checks.filter((check) => check.bucket === 'pass').length
+  const passing = checks.filter(isPassing).length
   const other = checks.length - passing - pending - failing
   const otherText = other > 0 ? `, ${other} other` : ''
   const header = `${checks.length} checks: ${passing} passing, ${pending} pending, ${failing} failing${otherText}`

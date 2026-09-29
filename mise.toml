@@ -24,6 +24,11 @@ description = "Run config tests"
 dir = "{{config_root}}"
 run = "npx vitest run"
 
+[tasks.coverage]
+description = "Run the git tool tests with per-file coverage thresholds"
+dir = "{{config_root}}"
+run = "npx vitest run tests/exec.test.ts tests/git-commit.test.ts tests/git-gh.test.ts tests/git-worktree.test.ts --coverage"
+
 [tasks.lint]
 description = "Lint extensions and tests with oxlint"
 dir = "{{config_root}}"
@@ -62,5 +67,5 @@ dir = "{{config_root}}"
 run = "git checkout -- agent/"
 
 [tasks.check]
-description = "Typecheck, lint, format-check, test, and check drift"
-run = [{ task = "typecheck" }, { task = "lint" }, { task = "format:check" }, { task = "test" }, { task = "drift" }]
+description = "Typecheck, lint, format-check, test, coverage, and check drift"
+run = [{ task = "typecheck" }, { task = "lint" }, { task = "format:check" }, { task = "test" }, { task = "coverage" }, { task = "drift" }]

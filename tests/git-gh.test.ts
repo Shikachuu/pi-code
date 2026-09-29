@@ -8,6 +8,7 @@ import { afterEach, expect, test } from 'vitest'
 import {
   authArgs,
   buildPrBody,
+  type Check,
   findPrUrl,
   formatPrView,
   formatRepoView,
@@ -77,6 +78,7 @@ function initRepo(): string {
   git(cwd, ['config', 'user.email', 't@t.com'])
   git(cwd, ['config', 'user.name', 't'])
   git(cwd, ['config', 'commit.gpgsign', 'false'])
+  git(cwd, ['config', 'core.hooksPath', join(cwd, '.git', 'hooks')])
   writeFileSync(join(cwd, 'a.txt'), 'a\n')
   git(cwd, ['add', 'a.txt'])
   git(cwd, ['commit', '-m', 'init'])
@@ -182,7 +184,7 @@ test('auth reports hosts when logged in and stderr when logged out', async () =>
   )
   expect(resultText(loggedIn)).toContain('github.com: octocat success (active)')
 
-  const wt = stubGh(
+  const loggedOutStub = stubGh(
     [
       'if [ "$1" = "auth" ]; then',
       `  if [ "$3" = "--json" ]; then printf '%s' '{"hosts":{}}'; exit 0; fi`,
@@ -202,7 +204,7 @@ test('auth reports hosts when logged in and stderr when logged out', async () =>
   const text = resultText(loggedOut)
   expect(text).toMatch(/not authenticated/)
   expect(text).toContain('You are not logged into any GitHub hosts.')
-  expect(wt.calls()).toContain('auth status')
+  expect(loggedOutStub.calls()).toContain('auth status')
 })
 
 test('auth falls back to the authenticated placeholder on empty output', async () => {
@@ -337,6 +339,60 @@ test('pr create falls back to origin/main when the local main ref is gone', asyn
     ctx(cwd, true),
   )
   expect(gh.calls().join('\n')).toContain('--base main')
+})
+
+test('pr create derives the title from the oldest commit ahead of the base', async () => {
+  const cwd = initRepo()
+  writeFileSync(join(cwd, 'c.txt'), 'c\n')
+  git(cwd, ['add', 'c.txt'])
+  git(cwd, ['commit', '-m', 'add c'])
+  writeFileSync(join(cwd, 'd.txt'), 'd\n')
+  git(cwd, ['add', 'd.txt'])
+  git(cwd, ['commit', '-m', 'add d'])
+  const gh = stubGh(
+    `if [ "$1" = "pr" ] && [ "$2" = "create" ]; then printf '%s\\n' 'https://github.com/o/r/pull/1'; exit 0; fi\nexit 1`,
+  )
+  await loadTool().execute('id', { operation: 'pr create' }, undefined, undefined, ctx(cwd, true))
+  expect(gh.callArgs()).toContainEqual([
+    'pr',
+    'create',
+    '--title',
+    'add b',
+    '--body',
+    expect.any(String),
+    '--base',
+    'main',
+  ])
+})
+
+test('pr create reports a missing git binary for the log call', async () => {
+  const cwd = initRepo()
+  const dir = mkdtempSync(join(tmpdir(), 'no-git-'))
+  restrictPath(dir)
+  const gh = stubGh('exit 1')
+  stubOnPath('git', `if [ "$1" = "rev-parse" ]; then /bin/rm -f "$0"; printf '%s\\n' "main"; exit 0; fi\nexit 1`)
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/git \(not found on PATH\)/)
+  expect(gh.callArgs()).toEqual([])
+})
+
+test('pr view rejects a target that looks like a flag', async () => {
+  const gh = stubGh('exit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr view', target: '--web' },
+    undefined,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(result)).toMatch(/must not start with/)
+  expect(gh.callArgs()).toEqual([])
 })
 
 test('pr create needs a title when there are no commits ahead of the base', async () => {
@@ -564,6 +620,20 @@ test('a silent gh failure reports the no-output placeholder', async () => {
     readOnlyCtx(process.cwd()),
   )
   expect(resultText(result)).toMatch(/\(no output from gh\)/)
+})
+
+test('summarizeChecks classifies every bucket and state member', () => {
+  const cases: [Check[], string][] = [
+    [[{ name: 'a', bucket: 'cancel' }], '1 checks: 0 passing, 0 pending, 1 failing'],
+    [[{ name: 'a', state: 'ERROR' }], '1 checks: 0 passing, 0 pending, 1 failing'],
+    [[{ name: 'a', state: 'PENDING' }], '1 checks: 0 passing, 1 pending, 0 failing'],
+    [[{ name: 'a', state: 'QUEUED' }], '1 checks: 0 passing, 1 pending, 0 failing'],
+    [[{ name: 'a', state: 'SUCCESS' }], '1 checks: 1 passing, 0 pending, 0 failing'],
+    [[{ name: 'a', bucket: 'skipping' }], '1 checks: 0 passing, 0 pending, 0 failing, 1 other'],
+  ]
+  for (const [checks, expected] of cases) {
+    expect(summarizeChecks(checks)).toContain(expected)
+  }
 })
 
 test('summarizeChecks keys off bucket and state, not the exit code', () => {
