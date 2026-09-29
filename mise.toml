@@ -68,4 +68,11 @@ run = "git checkout -- agent/"
 
 [tasks.check]
 description = "Typecheck, lint, format-check, test, coverage, and check drift"
-run = [{ task = "typecheck" }, { task = "lint" }, { task = "format:check" }, { task = "test" }, { task = "coverage" }, { task = "drift" }]
+run = [
+  { task = "typecheck" },
+  { task = "lint" },
+  { task = "format:check" },
+  { task = "test" },
+  { task = "coverage" },
+  { task = "drift" },
+]
