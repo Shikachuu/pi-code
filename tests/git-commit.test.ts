@@ -160,6 +160,32 @@ test('message mode with nothing staged still reports the empty index', async () 
   expect(git(cwd, ['log', '-1', '--format=%s'])).toBe('init')
 })
 
+test('message mode reports a git diff failure before committing', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'commit-nonrepo-'))
+  const result = await loadTool().execute('id', { message: 'feat: add b' }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toMatch(/git diff --cached --name-only --no-ext-diff failed with exit code/)
+  expect(resultText(result).split('\n').length).toBeLessThan(30)
+})
+
+test('message mode reports a missing git binary', async () => {
+  restrictPath(emptyPathDir())
+  const result = await loadTool().execute('id', { message: 'feat: add b' }, undefined, undefined, ctx(tmpdir()))
+  expect(resultText(result)).toMatch(/git \(not found on PATH\)/)
+})
+
+test('commit reports a missing git binary after the diff succeeds', async () => {
+  const cwd = initRepo()
+  stage(cwd, 'a.txt', 'a\nmore\n')
+  const realGit = which('git')
+  restrictPath(mkdtempSync(join(tmpdir(), 'no-git-')))
+  stubOnPath(
+    'git',
+    `if [ "$1" = "diff" ]; then ${shellQuote(realGit)} "$@"; status=$?; /bin/rm -f "$0"; exit $status; fi\nexit 1`,
+  )
+  const result = await loadTool().execute('id', { message: 'feat: add more' }, undefined, undefined, ctx(cwd))
+  expect(resultText(result)).toMatch(/git \(not found on PATH\)/)
+})
+
 test('a declined push leaves the commit local and never runs git push', async () => {
   const cwd = repoWithRemote()
   stage(cwd, 'b.txt', 'b\n')
@@ -294,6 +320,68 @@ test('push reports a missing git binary', async () => {
     ctx(cwd, true),
   )
   expect(resultText(result)).toMatch(/git \(not found on PATH\)/)
+})
+
+test('push honours branch.<branch>.pushRemote', async () => {
+  const cwd = repoWithRemote()
+  const upstreamRemote = mkdtempSync(join(tmpdir(), 'commit-upstream-'))
+  git(upstreamRemote, ['init', '--bare'])
+  git(cwd, ['remote', 'add', 'upstream', upstreamRemote])
+  git(cwd, ['config', 'branch.feature.pushRemote', 'upstream'])
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, ctx(cwd, true))
+  expect(stub.pushes()).toEqual([['push', '--set-upstream', 'upstream', 'feature']])
+  expect(() => git(cwd, ['rev-parse', '--verify', 'origin/feature'])).toThrow(/revision/i)
+})
+
+test('push honours remote.pushDefault when the branch has no pushRemote', async () => {
+  const cwd = repoWithRemote()
+  const upstreamRemote = mkdtempSync(join(tmpdir(), 'commit-default-'))
+  git(upstreamRemote, ['init', '--bare'])
+  git(cwd, ['remote', 'add', 'upstream', upstreamRemote])
+  git(cwd, ['config', 'remote.pushDefault', 'upstream'])
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  await loadTool().execute('id', { message: 'feat: add b', push: true }, undefined, undefined, ctx(cwd, true))
+  expect(stub.pushes()).toEqual([['push', '--set-upstream', 'upstream', 'feature']])
+})
+
+test('push refuses to guess between multiple non-origin remotes', async () => {
+  const cwd = initRepo()
+  const fork = mkdtempSync(join(tmpdir(), 'commit-fork-'))
+  const upstream = mkdtempSync(join(tmpdir(), 'commit-upstream-'))
+  git(fork, ['init', '--bare'])
+  git(upstream, ['init', '--bare'])
+  git(cwd, ['remote', 'add', 'fork', fork])
+  git(cwd, ['remote', 'add', 'upstream', upstream])
+  git(cwd, ['checkout', '-b', 'feature'])
+  stage(cwd, 'b.txt', 'b\n')
+  const stub = stubGit()
+  let prompted = false
+  const capturingCtx = asMock<ExtensionContext>({
+    cwd,
+    hasUI: true,
+    ui: {
+      confirm: async () => {
+        prompted = true
+        return true
+      },
+      notify: () => {},
+    },
+  })
+  const result = await loadTool().execute(
+    'id',
+    { message: 'feat: add b', push: true },
+    undefined,
+    undefined,
+    capturingCtx,
+  )
+  expect(resultText(result)).toMatch(/Multiple git remotes \(fork, upstream\)/)
+  expect(prompted).toBe(false)
+  expect(stub.pushes()).toEqual([])
+  expect(() => git(cwd, ['rev-parse', '--verify', 'fork/feature'])).toThrow(/revision/i)
+  expect(() => git(cwd, ['rev-parse', '--verify', 'upstream/feature'])).toThrow(/revision/i)
 })
 
 test('push with no remote leaves the commit local', async () => {

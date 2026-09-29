@@ -45,11 +45,21 @@ async function resolveBase(
   requested: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<{ base: string; gitRef: string } | undefined> {
+  const remotesResult = await run('git', ['remote'], { cwd, signal })
+  const remotes = remotesResult.ok
+    ? remotesResult.stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : []
   for (const candidate of requested ? [requested] : ['main', 'master']) {
     const local = await run('git', ['rev-parse', '--verify', candidate], { cwd, signal })
     if (local.ok) return { base: candidate, gitRef: candidate }
-    const remote = await run('git', ['rev-parse', '--verify', `refs/remotes/origin/${candidate}`], { cwd, signal })
-    if (remote.ok) return { base: candidate, gitRef: `origin/${candidate}` }
+    for (const remoteName of remotes) {
+      const ref = `refs/remotes/${remoteName}/${candidate}`
+      const remote = await run('git', ['rev-parse', '--verify', ref], { cwd, signal })
+      if (remote.ok) return { base: candidate, gitRef: `${remoteName}/${candidate}` }
+    }
   }
   return undefined
 }
@@ -143,8 +153,8 @@ export default function (pi: ExtensionAPI) {
           if (!log.ok)
             return text(`git log failed with exit code ${log.code}: ${log.stderr.trim() || log.stdout.trim()}`)
           const commits = parseCommits(log.stdout)
-          // Oldest commit ahead of the base, matching `gh pr create --fill`.
-          const title = params.title ?? commits.at(-1)?.subject
+          const oldestSubject = commits.at(-1)?.subject
+          const title = params.title ?? oldestSubject
           if (!title) return text('pr create needs a title; no local commits ahead of the base were found.')
           const body = params.body ?? buildPrBody(commits)
           const confirmed = await ctx.ui.confirm('Create pull request', `Base: ${base}\nTitle: ${title}\n\n${body}`)

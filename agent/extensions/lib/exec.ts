@@ -13,7 +13,6 @@ export interface RunResult {
   stdout: string
   stderr: string
   code: number
-  /** True when the process could not be spawned, for example when the binary is absent from PATH. */
   missing: boolean
 }
 

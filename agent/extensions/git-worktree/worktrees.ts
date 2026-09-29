@@ -88,7 +88,9 @@ export function parseEnvelope(raw: string): WtEnvelope | undefined {
   if (!isRecord(data)) return undefined
   const rawItems = data.items
   const items = Array.isArray(rawItems) ? rawItems.filter(isRecord).map(parseItem) : []
-  return { schema: typeof data.schema === 'number' ? data.schema : undefined, items }
+  const schema = typeof data.schema === 'number' ? data.schema : undefined
+  if (schema !== undefined && schema !== 2) return undefined
+  return { schema, items }
 }
 
 export function isDirty(changes: WtChanges): boolean {

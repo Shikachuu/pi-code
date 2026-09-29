@@ -105,7 +105,7 @@ export default function (pi: ExtensionAPI) {
           }
         }
       }
-      // Match git's own default: prefer origin, then a single configured remote.
+      // Prefer origin, then a single configured remote.
       if (!remote && remotes.includes('origin')) remote = 'origin'
       if (!remote && remotes.length === 1) remote = remotes[0] ?? ''
       if (!remote && remotes.length > 1) {

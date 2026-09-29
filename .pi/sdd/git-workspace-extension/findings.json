@@ -1,0 +1,164 @@
+{
+  "runs": [
+    {
+      "run": 1,
+      "at": "2026-09-29T08:47:45.720Z",
+      "verdict": "REQUEST CHANGES",
+      "findings": [
+        {
+          "severity": "important",
+          "category": "guard-bypass",
+          "file": "agent/extensions/git-worktree/index.ts",
+          "line": 84,
+          "issue": "The leading-dash guard tests the RAW param (`params.branch?.startsWith('-')`) while lines 101, 125 and 143 use the TRIMMED value (`params.branch?.trim()`). A branch of `' -f'` passes the guard, is trimmed to `-f`, `findByBranch(envelope, '-f')` returns undefined so `target` is undefined, the self-removal guard at line 148 cannot fire, and the tool runs `wt remove -f --foreground`. Per .pi/sdd/git-workspace-extension/discovery.md:46, `wt remove` with no branch argument defaults to the current worktree, so that argv force-removes the worktree the session is running in and deletes its branch. Reproduced end to end against a PATH `wt` stub: branch `' -f'` produced calls `list --format=json`, `remove -f --foreground`, `list --format=json` and the result \"Removed the worktree for -f.\". The same ordering hole applies to `create` and `switch`, where the trimmed branch lands in `wt switch` argv as a bare positional. Impact is bounded by the confirm dialog rendering the raw string and by git rejecting such branch names later, but the guard added in this diff exists precisely to make this unreachable and it is one character away.",
+          "fix": "Trim once before the guard and reuse the trimmed value: `const branch = params.branch?.trim(); if (branch?.startsWith('-')) return text('worktree branch must not start with \"-\".')` at the top of `execute`, then use `branch` in the create/switch/remove cases (remove still falls back to `findCurrent(...)`). Add a test mirroring tests/git-worktree.test.ts:126 with `branch: ' -f'` asserting `/must not start with/` and `wt.callArgs()` equal to `[]`.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "unvalidated-external-schema",
+          "file": "agent/extensions/git-worktree/worktrees.ts",
+          "line": 91,
+          "issue": "`parseEnvelope` reads `schema` into the model and nothing ever checks it. If a future Worktrunk bumps the JSON schema and moves or renames `items[].worktree`, `list` silently answers \"No worktrees found.\" and `status` answers \"No current worktree found\" instead of the \"could not parse\" error the spec promises for unexpected wt output, so the agent is told there are no worktrees when there are.",
+          "fix": "No linter enforces this. Either reject a present-but-unknown schema in `parseEnvelope` (return undefined when `typeof data.schema === 'number' && data.schema !== 2`) so the existing \"could not parse\" path fires, or drop the unused `schema` field and note that the tool keys off the documented schema-2 shape.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "misleading-parameter-doc",
+          "file": "agent/extensions/git-worktree/index.ts",
+          "line": 26,
+          "issue": "The `branch` description promises \"remove defaults to the current worktree\", but that default can never succeed: `loadWorktrees` runs `wt list` with `cwd: ctx.cwd`, so the item with `worktree.current == true` (discovery.md:53,55) is always the worktree containing the session cwd, and the `ownsCwd` realpath guard refuses it every time. The model reads this description, so it will try `remove` with no branch and get \"Refusing to remove ...: it is the worktree this session is running in.\" The real rule is only stated in the promptGuidelines.",
+          "fix": "No linter enforces this. Drop the clause and describe the parameter as \"Branch to create, remove or switch to (required for remove)\", or state the default and its refusal: \"remove defaults to the current worktree and is then refused, so pass a branch\".",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "hardcoded-remote-name",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 51,
+          "issue": "`resolveBase` falls back only to `refs/remotes/origin/<candidate>`, so a repo whose only remote is named `upstream` (the normal shape for a fork) and whose local `main`/`master` is gone fails with \"Could not find base branch (main or master) as a local or origin ref\" even though `upstream/main` exists. Recoverable via the `base` param, but the error names a remote the user may not have.",
+          "fix": "No linter enforces this. List remotes with `git remote` (or `gh repo view`) and probe the first/only remote, or name the remote actually searched in the error text.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "duplicated-test-setup",
+          "file": "tests/git-worktree.test.ts",
+          "line": 34,
+          "issue": "The ExtensionContext factory is copy-pasted in all three new test files (tests/git-worktree.test.ts:34, tests/git-gh.test.ts:48 and :56 `readOnlyCtx`, tests/git-commit.test.ts:25), each a slightly different variant of the same `asMock` block. A change to the ctx shape or the confirm signature has to be made in three places.",
+          "fix": "No linter enforces this (the duplication is across files, not statements). Move one `toolCtx(cwd, { confirm })` helper next to `loadRegisteredTool` in tests/helpers.ts and have the three files call it.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "nit",
+          "category": "redundant-test-run",
+          "file": "mise.toml",
+          "line": 30,
+          "issue": "`mise run check` runs `test` (all 20 files) and then `coverage` (the same 4 files again with `--coverage`), so the git-tool tests execute twice per gate; measured at 7.65s + 6.33s locally.",
+          "fix": "No linter or formatter rule covers task composition. Either give `test` `--coverage` with the thresholds and drop the separate task, or narrow `coverage` to the new modules only.",
+          "agents": ["code-reviewer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-branch",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 100,
+          "issue": "The `branch.<branch>.pushRemote` / `remote.pushDefault` config resolution never executes in any test. The v8 coverage report shows statements 103 (`remote = config.stdout.trim()`) and 104 (`break`) at zero count, and the guard `if (config.ok && config.stdout.trim())` on line 102 has branch counts `[0, 12]` - the true side is never taken. Every test repo either has an upstream set (so the loop is skipped) or no such config (so `git config` returns empty and the falsy side is taken). This is the code that picks the push destination, the one decision in the tool that writes to a remote the user did not name explicitly, and it has zero execution history. I confirmed the behaviour is correct by driving it manually, but a regression that swapped the two config keys, dropped the `break`, or ignored `config.ok` would leave the suite green.",
+          "fix": "Add a tool-level test on a repo with two remotes (`fork`, `upstream`), no upstream on the branch, and `branch.feature.pushRemote` set to `upstream`. Assert the exact push argv is `['push','--set-upstream','upstream','feature']` and that no push reached `fork` (e.g. `git branch --format=%(refname)` on each bare remote). A second case with only `remote.pushDefault` set and no `pushRemote` pins the loop order.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 110,
+          "issue": "The 'Multiple git remotes ... with no upstream' refusal never executes. Statement 112 (the message template literal) has zero count and the `if` on line 110 has branch counts `[0, 10]`. This is the guard that stops the tool from guessing a remote, and it is the one case in the resolution ladder with no test: `No git remote is configured` is covered (tests/git-commit.test.ts:299), `prefers origin over the first remote` is covered (tests/git-commit.test.ts:449), and the upstream case is covered, but a repo with two non-origin remotes and no upstream config falls straight through every existing test. If the `remotes.length > 1` condition were changed to `>= 1` or deleted, no test would fail and the tool would push to a guessed remote.",
+          "fix": "Add a test on a real repo with two bare remotes named `fork` and `upstream`, no upstream on the branch and no `pushRemote`/`pushDefault`, then `{ message, push: true }` with a confirm spy. Assert the result matches `/Multiple git remotes \\(fork, upstream\\)/`, that `prompted` is `false`, and that `git rev-parse --verify origin/feature` and `upstream/feature` both still throw (nothing was pushed anywhere).",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 54,
+          "issue": "The message-mode staged-diff failure is untested. Statement 55 (`if (!staged.ok) return text(staged.error)`) has zero count in the coverage report. The parallel no-message-mode path is covered by tests/git-commit.test.ts:395 (non-repo cwd), but the message path runs `git diff --cached --name-only` and its two error strings (`git (not found on PATH)` at index.ts:21 and the exit-code dump at :25) are never rendered through the commit tool. A regression that, say, dropped the `!staged.ok` check would let a failed diff fall through to `git commit` and produce a confusing empty-index message.",
+          "fix": "Add one test driving `{ message: 'feat: add b' }` with `ctx` pointing at a directory that is not a git repo, asserting the result matches `/^git diff --cached --name-only --no-ext-diff failed with exit code 129/` and that the exit-129 usage dump is capped at 20 lines. A second case with `restrictPath(emptyPathDir())` pins the `git (not found on PATH)` text on this path.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-worktree/index.ts",
+          "line": 104,
+          "issue": "Three untested guard paths on the worktree tool, all zero-count in the v8 report: statement 104 (`create`'s pre-check `if (!loaded.ok) return text(loaded.error)`), statement 108 (`create`'s `wt switch` missing-binary branch), and statement 94 (`status`'s `if (!loaded.ok)`). The twins for `remove` exist (tests/git-worktree.test.ts:118 covers `switch`'s missing binary, :124 covers `remove`'s self-deleting stub, :144 covers `remove`'s failing pre-check list), and the test at :124 already contains the exact \"stub deletes itself after serving `list`\" trick needed for the `create` case, so the gap is an oversight rather than a limitation. The `create` pre-check is the guard that stops a removal-free mutation on stale state, so it matters more than its `list` twin.",
+          "fix": "Reuse the self-deleting stub pattern from tests/git-worktree.test.ts:124 for `create`: a `wt` that serves a valid `list` envelope then removes itself, then call `{ operation: 'create', branch: 'new-thing' }` and assert the result matches `/wt \\(not found on PATH\\)/`. Add a `create` case with `stubOnPath('wt', 'exit 4')` asserting `/wt list failed with exit code 4/` and that no `switch` argv was recorded. Add a `status` case with the same failing-list stub.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "untested-error-path",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 88,
+          "issue": "Four zero-count error paths on the gh tool: statement 88 (`auth`'s `json.missing` branch on the `--json hosts` call), statement 94 (`auth`'s `human.missing` branch on the fallback form), statement 103 (`repo view`'s `ghFailure`), and statement 159 (`ghFailure('gh pr create', result)` - gh exits non-zero printing no PR URL). The `pr view` and `pr checks` twins of the missing-binary path are covered (tests/git-gh.test.ts:501, :562) and the non-zero-with-URL `pr create` case is covered (:427), so the plain-failure `pr create` case and both `auth` branches are holes in an otherwise complete matrix. The round-1 review already flagged the `auth` missing-binary branches; they are still open.",
+          "fix": "Three tests. (a) `{ operation: 'auth' }` under `restrictPath(emptyPathDir())` asserting the `gh auth status` `ghFailure` text. (b) `{ operation: 'repo view' }` with `stubGh('printf \"boom\\\\n\" >&2\\nexit 1')` asserting `/gh repo view failed with exit code 1/` and that `boom` appears. (c) A `pr create` test using the real-repo base resolution with `stubGh('printf \"validation failed\\\\n\" >&2\\nexit 1')` and a confirm that returns true, asserting the `ghFailure` text and, since the declined variant already proves gating, that the confirm was actually reached.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "uncovered-fallback",
+          "file": "agent/extensions/git-gh/ghops.ts",
+          "line": 95,
+          "issue": "Six defensive parse/format fallbacks are zero-count: `prChecksArgs` with a `target` (ghops.ts:95 - no test calls it with a target), `parseAuthHosts` skipping a non-array `accounts` (:245) and a non-record account entry (:250), `formatPrView`'s `isDraft` flag (:178), `parseRepoView`'s non-record `defaultBranchRef` (:267), and `parseItem` with a non-string `branch` (worktrees.ts:71). Each is a malformed-input guard on a pure function, so a unit test is cheap. `parseAuthHosts` at :250 was flagged in the round-1 review and is still open.",
+          "fix": "Extend the existing table-driven parse tests. For `parseAuthHosts`, feed `{\"hosts\":{\"github.com\":[\"x\",{\"login\":\"a\"}]}}` and assert the exact emitted lines (`'x'` skipped). For the rest, one case each in the existing `formatPrView, summarizeChecks and formatRepoView cover their fallbacks` and `parseAuthHosts handles the hosts envelope and rejects junk` tests.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "brittle-threshold",
+          "file": "vitest.config.ts",
+          "line": 16,
+          "issue": "The per-file line threshold of 95 is met by git-commit/index.ts with only 95.58% (a 0.58pp margin, roughly one statement). That file is also the least-covered of the seven at 81.65% branches, so it is the file most likely to need the next edit. A single added uncovered line anywhere in it turns CI red for a change that is otherwise fine, which trains people to raise the threshold instead of adding the test.",
+          "fix": "Either lower the per-file line threshold to 92 (still far above the 80% floor and above every other file here) so the gate catches a real regression rather than a single line, or close the six zero-count statements in the findings above, which lifts the file to ~99% and restores headroom.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "nit",
+          "category": "unenforced-acceptance-criterion",
+          "file": ".pi/sdd/git-workspace-extension/plan.md",
+          "line": 72,
+          "issue": "The acceptance criterion 'Nothing under `agent/` is written at runtime by these tools' is still verified only by a manual `rg` for `writeFileSync`/`mkdirSync`, as the plan itself states. I confirmed the grep is clean today, but nothing in the suite or in oxlint enforces it, so a future edit that adds a state file under `agent/` passes every gate until `mise run drift` catches it at runtime. This was a round-1 nit and is still open.",
+          "fix": "Add an oxlint `no-restricted-imports` or `no-restricted-syntax` rule banning `node:fs` write calls under `agent/extensions/**`, or a vitest test that walks the extension dirs and fails on `writeFileSync`/`mkdirSync`/`appendFile`/`rmSync`. Either turns a review checklist item into a build failure.",
+          "agents": ["test-engineer"]
+        },
+        {
+          "severity": "important",
+          "category": "comment-must-kill",
+          "file": "agent/extensions/git-gh/index.ts",
+          "line": 146,
+          "issue": "\"// Oldest commit ahead of the base, matching `gh pr create --fill`.\" A justification for our own line (`commits.at(-1)?.subject` at :147) that is also factually wrong. Evidence: gh's own `initDefaultTitleBody` (cli/cli trunk, pkg/cmd/pr/create/create.go) does `if len(commits) == 1 || useFirstCommit { state.Title = commits[len(commits)-1].Title } else { state.Title = humanize(headRef) }`, and `useFirstCommit` is `opts.FillFirst`. So plain `--fill` takes `commits[len-1]` only for a single-commit branch; with more than one commit it titles the PR after the humanized branch name. The oldest-commit title is `--fill-first`, a separate flag (verified on the local `gh 2.101.0`: `-f, --fill  Use commit info for title and body` alongside `--fill-first  Use first commit info for title and body`). The path here handles up to 50 commits (`gitLogArgs`), and tests/git-gh.test.ts:344 drives it with three commits and asserts the oldest subject 'add b', so the claim is wrong exactly where the code runs. The \"oldest\" half is also derivable: `gitLogArgs` is a plain `git log` (newest-first) and `parseCommits` preserves that order, so `.at(-1)` is the oldest by construction.",
+          "fix": "delete. The behavior is a design choice, not a constraint, so it clears no keep-list item. If the oldest-commit title must stay, the intent belongs in the code shape (e.g. a named local like `const oldestSubject = commits.at(-1)?.subject` in `pr create`, `git-gh/index.ts:147`), not in a claim about a gh flag that does not behave this way.",
+          "agents": ["comment-auditor"]
+        },
+        {
+          "severity": "nit",
+          "category": "comment-nit",
+          "file": "agent/extensions/git-commit/index.ts",
+          "line": 108,
+          "issue": "\"// Match git's own default: prefer origin, then a single configured remote.\" Restates the two lines below it and gets git's order backwards. git's `remotes_remote_for_branch` (git/remote.c:673-687) is: branch.pushremote, then remote.pushDefault, then, only if `remotes_nr == 1`, that single remote, else the literal \"origin\". The two orders agree in practice, so the comment's claim is not a documented surprise we are stuck with; it is our own ordering choice. Keep-list item 2 is a plausible cover, hence nits rather than mustKill.",
+          "fix": "delete. Refactor target: the inline block at git-commit/index.ts:99-110. Extract it as `resolvePushRemote(branch, upstream, remotes)` in git-gh-style pure form; the function name plus the ordered returns carry the intent, and the git-compatible order becomes checkable in one place.",
+          "agents": ["comment-auditor"]
+        },
+        {
+          "severity": "nit",
+          "category": "comment-nit",
+          "file": "agent/extensions/lib/exec.ts",
+          "line": 16,
+          "issue": "\"/** True when the process could not be spawned, for example when the binary is absent from PATH. */\" Longer than the contract it carries. The field name says it, all three callers render `missing` as \"(not found on PATH)\", and the \"for example\" is loose: the only spawn error that sets the flag is `error.code === 'ENOENT'` (exec.ts:69), so a non-ENOENT spawn failure would report `missing: false`. Keep-list item 4 plausibly covers a cross-module contract, hence nits rather than mustKill.",
+          "fix": "delete. If the ENOENT-only contract must be pinned, the code shape does it: derive the flag once, e.g. `const missing = code === 'ENOENT'` with `code` narrowed to a `NodeJS.ErrnoException`, so the field carries no wider promise than the implementation.",
+          "agents": ["comment-auditor"]
+        }
+      ]
+    }
+  ]
+}

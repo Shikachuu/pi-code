@@ -148,6 +148,48 @@ test('worktree remove surfaces a non-zero pre-check list failure', async () => {
   expect(wt.calls().some((call) => call.startsWith('remove'))).toBe(false)
 })
 
+test('worktree create surfaces a failing pre-check list', async () => {
+  const wt = stubOnPath('wt', 'printf "%s\\n" "list down" >&2\nexit 4')
+  const result = await loadTool().execute('id', { operation: 'create', branch: 'x' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/wt list failed with exit code 4/)
+  expect(wt.calls().some((call) => call.startsWith('switch'))).toBe(false)
+})
+
+test('worktree create reports a missing wt binary after the pre-check', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wt-only-'))
+  restrictPath(dir)
+  const file = join(dir, 'wt')
+  writeFileSync(
+    file,
+    `#!/bin/sh\nif [ "$1" = "list" ]; then printf '%s' ${shellQuote(JSON.stringify({ schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] }))}; /bin/rm -f "$0"; exit 0; fi\nexit 0\n`,
+  )
+  chmodSync(file, 0o755)
+  const result = await loadTool().execute('id', { operation: 'create', branch: 'x' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/wt \(not found on PATH\)/)
+})
+
+test('worktree status surfaces a failing list', async () => {
+  stubOnPath('wt', 'printf "%s\\n" "list down" >&2\nexit 4')
+  const result = await loadTool().execute('id', { operation: 'status' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/wt list failed with exit code 4/)
+})
+
+test('worktree rejects a whitespace-padded flag branch', async () => {
+  const wt = stubList(ENVELOPE)
+  const result = await loadTool().execute('id', { operation: 'remove', branch: ' -f' }, undefined, undefined, ctx())
+  expect(resultText(result)).toMatch(/must not start with/)
+  expect(wt.callArgs()).toEqual([])
+})
+
+test('parseEnvelope rejects an unknown schema version', () => {
+  expect(parseEnvelope('{"schema":3,"items":[]}')).toBeUndefined()
+})
+
+test('summarize treats a non-string branch as detached', () => {
+  const envelope = must(parseEnvelope('{"schema":2,"items":[{"branch":5,"worktree":{"path":"/p"}}]}'), 'envelope')
+  expect(summarize(must(envelope.items[0], 'item')).branch).toBe('(detached)')
+})
+
 test('worktree create runs wt switch -c with --no-cd for a new branch', async () => {
   const wt = stubList({ schema: 2, items: [{ branch: 'main', worktree: { path: '/repo', current: true } }] })
   const result = await loadTool().execute(

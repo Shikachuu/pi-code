@@ -23,9 +23,7 @@ const Params = Type.Object({
     Type.Literal('status'),
     Type.Literal('switch'),
   ]),
-  branch: Type.Optional(
-    Type.String({ description: 'Branch to create, remove or switch to; remove defaults to the current worktree' }),
-  ),
+  branch: Type.Optional(Type.String({ description: 'Branch to create, remove or switch to (required for remove)' })),
   force: Type.Optional(
     Type.Boolean({ description: 'Remove a worktree that has uncommitted changes (maps to wt remove -f)' }),
   ),
@@ -81,7 +79,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, params, signal, _onUpdate, ctx) {
       const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }], details: {} })
       const cwd = ctx.cwd
-      if (params.branch?.startsWith('-')) return text('worktree branch must not start with "-".')
+      const requestedBranch = params.branch?.trim()
+      if (requestedBranch?.startsWith('-')) return text('worktree branch must not start with "-".')
 
       switch (params.operation) {
         case 'list': {
@@ -98,7 +97,7 @@ export default function (pi: ExtensionAPI) {
         }
 
         case 'create': {
-          const branch = params.branch?.trim()
+          const branch = requestedBranch
           if (!branch) return text('worktree create requires a branch name.')
           const loaded = await loadWorktrees(cwd, signal)
           if (!loaded.ok) return text(loaded.error)
@@ -122,7 +121,7 @@ export default function (pi: ExtensionAPI) {
         }
 
         case 'switch': {
-          const branch = params.branch?.trim()
+          const branch = requestedBranch
           if (!branch) return text('worktree switch requires a branch name.')
           const result = await run('wt', ['switch', branch, '--no-cd'], { cwd, signal })
           if (result.missing) return text(`wt (not found on PATH): ${result.stderr.trim()}`)
@@ -140,7 +139,7 @@ export default function (pi: ExtensionAPI) {
         case 'remove': {
           const loaded = await loadWorktrees(cwd, signal)
           if (!loaded.ok) return text(loaded.error)
-          const branch = params.branch?.trim() || findCurrent(loaded.envelope)?.branch
+          const branch = requestedBranch || findCurrent(loaded.envelope)?.branch
           if (!branch) return text('worktree remove needs a branch when there is no current worktree.')
           const target = findByBranch(loaded.envelope, branch)
           const resolvedTarget = target ? realPath(target.path) : ''

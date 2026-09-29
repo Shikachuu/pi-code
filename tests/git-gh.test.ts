@@ -382,6 +382,39 @@ test('pr create reports a missing git binary for the log call', async () => {
   expect(gh.callArgs()).toEqual([])
 })
 
+test('auth reports a missing gh binary', async () => {
+  restrictPath(emptyPathDir())
+  const result = await loadTool().execute('id', { operation: 'auth' }, undefined, undefined, readOnlyCtx(process.cwd()))
+  expect(resultText(result)).toMatch(/gh \(not found on PATH\)/)
+})
+
+test('repo view surfaces a non-zero gh failure', async () => {
+  stubGh('printf "%s\\n" "boom" >&2\nexit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'repo view' },
+    undefined,
+    undefined,
+    readOnlyCtx(process.cwd()),
+  )
+  expect(resultText(result)).toMatch(/gh repo view failed with exit code 1/)
+  expect(resultText(result)).toContain('boom')
+})
+
+test('pr create surfaces a gh failure that prints no URL', async () => {
+  const cwd = initRepo()
+  stubGh('printf "%s\\n" "validation failed" >&2\nexit 1')
+  const result = await loadTool().execute(
+    'id',
+    { operation: 'pr create', title: 'x', body: 'y' },
+    undefined,
+    undefined,
+    ctx(cwd, true),
+  )
+  expect(resultText(result)).toMatch(/gh pr create failed with exit code 1/)
+  expect(resultText(result)).toContain('validation failed')
+})
+
 test('pr view rejects a target that looks like a flag', async () => {
   const gh = stubGh('exit 1')
   const result = await loadTool().execute(
@@ -685,17 +718,26 @@ test('parseAuthHosts handles the hosts envelope and rejects junk', () => {
   ).toEqual(['github.com: a success (active)'])
   expect(parseAuthHosts('nope')).toBeUndefined()
   expect(parseAuthHosts('{"hosts":{}}')).toEqual([])
+  expect(parseAuthHosts(JSON.stringify({ hosts: { 'github.com': ['x', { login: 'a' }], 'gitlab.com': {} } }))).toEqual([
+    'github.com: a unknown',
+  ])
 })
 
 test('pr view, repo view and URL helpers parse and format', () => {
   const pr = must(parsePrView(JSON.stringify(PR_JSON)), 'pr')
   expect(formatPrView(pr)).toContain('#12 Add gh tool')
+  expect(formatPrView(must(parsePrView(JSON.stringify({ state: 'OPEN', isDraft: true })), 'draft'))).toContain(
+    '[OPEN, draft]',
+  )
   const repo = must(
     parseRepoView(JSON.stringify({ nameWithOwner: 'o/r', defaultBranchRef: { name: 'main' }, isPrivate: false })),
     'repo',
   )
   expect(formatRepoView(repo)).toContain('public')
   expect(must(parseRepoView(JSON.stringify({ defaultBranchRef: 'main' })), 'repo').defaultBranch).toBeUndefined()
+  expect(formatRepoView(must(parseRepoView(JSON.stringify({ defaultBranchRef: 'main' })), 'repo'))).not.toContain(
+    'default:',
+  )
   expect(parseRepoView('nope')).toBeUndefined()
   expect(findPrUrl('created https://github.com/o/r/pull/7\n')).toBe('https://github.com/o/r/pull/7')
   expect(findPrUrl('nothing')).toBeUndefined()
@@ -739,6 +781,7 @@ test('arg builders pin the exact JSON field lists', () => {
   expect(authArgs(true)).toEqual(['auth', 'status', '--json', 'hosts'])
   expect(prViewArgs('12')).toEqual(['pr', 'view', '12', '--json', PR_VIEW_FIELDS.join(',')])
   expect(prChecksArgs(undefined)).toEqual(['pr', 'checks', '--json', PR_CHECKS_FIELDS.join(',')])
+  expect(prChecksArgs('12')).toEqual(['pr', 'checks', '12', '--json', PR_CHECKS_FIELDS.join(',')])
   expect(repoViewArgs()).toEqual(['repo', 'view', '--json', REPO_VIEW_FIELDS.join(',')])
   expect(prCreateArgs({ title: 't', body: 'b', base: 'main' })).toEqual([
     'pr',
